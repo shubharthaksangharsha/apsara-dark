@@ -474,3 +474,34 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── live/LiveSessionViewModel.kt      — inputAmplitude observer for instant USER detection
 └── ui/components/BottomInputBar.kt   — Boosted visualizer scaling (1.5x, taller bars, more variation)
 ```
+
+---
+
+## v2.7.0 — Live Mode Attachment Bottom Sheet (Feb 9, 2026)
+
+### What was done
+
+- **Attachment bottom sheet**: Tapping the `+` button during live mode now opens a Material3 `ModalBottomSheet` with three options:
+  - **Camera** — `PhotoCamera` icon (for sending camera frames to live session)
+  - **Photos** — `PhotoLibrary` icon (for picking photos to send)
+  - **Files** — `AttachFile` icon (for picking files to send)
+
+- **Live-mode only**: The bottom sheet only appears when in live mode (`isLiveActive == true`). The `+` button in normal mode is reserved for a different attach menu (TBD).
+
+- **Themed**: Uses app palette — `surfaceContainer` background, `surfaceContainerHigh` icon boxes, `textSecondary` icons, rounded corners, minimal drag handle.
+
+- **Auto-dismiss**: Each option dismisses the sheet after being tapped.
+
+### New files
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+└── ui/components/AttachmentBottomSheet.kt   — ModalBottomSheet with Camera, Photos, Files
+```
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+└── ui/screens/HomeScreen.kt                 — showLiveAttachmentSheet state, live-only + button logic
+```

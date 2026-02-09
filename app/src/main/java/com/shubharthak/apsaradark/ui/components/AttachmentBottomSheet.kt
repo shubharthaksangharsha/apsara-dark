@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.ScreenShare
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,7 +32,9 @@ fun AttachmentBottomSheet(
     onDismiss: () -> Unit,
     onCameraClick: () -> Unit,
     onPhotosClick: () -> Unit,
-    onFilesClick: () -> Unit
+    onFilesClick: () -> Unit,
+    onVideoClick: () -> Unit = {},
+    onScreenshareClick: () -> Unit = {}
 ) {
     val palette = LocalThemeManager.current.currentTheme
 
@@ -82,6 +86,24 @@ fun AttachmentBottomSheet(
                 palette = palette,
                 onClick = {
                     onFilesClick()
+                    onDismiss()
+                }
+            )
+            AttachmentOption(
+                icon = Icons.Outlined.Videocam,
+                label = "Video",
+                palette = palette,
+                onClick = {
+                    onVideoClick()
+                    onDismiss()
+                }
+            )
+            AttachmentOption(
+                icon = Icons.Outlined.ScreenShare,
+                label = "Screenshare",
+                palette = palette,
+                onClick = {
+                    onScreenshareClick()
                     onDismiss()
                 }
             )
