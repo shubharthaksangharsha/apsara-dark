@@ -25,7 +25,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,7 +39,6 @@ import com.shubharthak.apsaradark.live.LiveMessage
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.components.*
 import com.shubharthak.apsaradark.ui.theme.*
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,8 +50,6 @@ fun HomeScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var inputText by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
     var showLiveAttachmentSheet by remember { mutableStateOf(false) }
     var pastedImages by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
@@ -96,14 +92,6 @@ fun HomeScreen(
     LaunchedEffect(openDrawerOnReturn) {
         if (openDrawerOnReturn) {
             drawerState.open()
-        }
-    }
-
-    // Auto-focus the input field when the screen appears (only in normal mode)
-    LaunchedEffect(liveViewModel.liveState) {
-        if (liveViewModel.liveState == LiveSessionViewModel.LiveState.IDLE) {
-            delay(300)
-            try { focusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
 
@@ -172,22 +160,7 @@ fun HomeScreen(
             },
             bottomBar = {
                 BottomInputBar(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    onSend = {
-                        // TODO: actually process the message + images
-                        inputText = ""
-                        pastedImages = emptyList()
-                    },
-                    onMicClick = { /* TODO: voice-to-text input */ },
-                    onAttachClick = {
-                        if (isLiveActive) {
-                            showLiveAttachmentSheet = true
-                        } else {
-                            // TODO: normal mode attach menu
-                        }
-                    },
-                    onLiveClick = { startLiveWithPermission() },
+                    onAttachClick = { showLiveAttachmentSheet = true },
                     onLiveEnd = { liveViewModel.stopLive() },
                     onLiveMuteToggle = { liveViewModel.toggleMute() },
                     onLiveTextSend = { text -> liveViewModel.sendText(text) },
@@ -201,8 +174,7 @@ fun HomeScreen(
                     hasBluetooth = liveViewModel.audioManager.isBluetoothAvailable(),
                     pastedImages = pastedImages,
                     onImagePasted = { uri -> pastedImages = pastedImages + uri },
-                    onImageRemoved = { uri -> pastedImages = pastedImages - uri },
-                    focusRequester = focusRequester
+                    onImageRemoved = { uri -> pastedImages = pastedImages - uri }
                 )
             }
         ) { paddingValues ->

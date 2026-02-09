@@ -1,6 +1,5 @@
 package com.shubharthak.apsaradark.ui.components
 
-import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.text.Editable
@@ -8,7 +7,6 @@ import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -21,7 +19,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
@@ -31,16 +28,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -58,19 +50,13 @@ import com.shubharthak.apsaradark.ui.theme.*
 import kotlin.math.sin
 
 /**
- * BottomInputBar with two modes:
- * 1. Normal mode — text input + mic + live icon (default, when liveState == IDLE)
- * 2. Live mode  — ONLY when user taps the Live (GraphicEq) icon
- *                  Shows: + button, Type field, [visualizer] End button, mic mute/unmute
+ * BottomInputBar — Live mode only.
+ * Shows the live input bar when a live session is active, nothing when idle.
+ * Users start live mode via the "Talk" feature card on the home screen.
  */
 @Composable
 fun BottomInputBar(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onMicClick: () -> Unit,
     onAttachClick: () -> Unit,
-    onLiveClick: () -> Unit,
     onLiveEnd: () -> Unit,
     onLiveMuteToggle: () -> Unit,
     onLiveTextSend: (String) -> Unit,
@@ -85,280 +71,33 @@ fun BottomInputBar(
     pastedImages: List<Uri> = emptyList(),
     onImagePasted: (Uri) -> Unit = {},
     onImageRemoved: (Uri) -> Unit = {},
-    focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier
 ) {
-    // Live mode only when NOT idle
     val isLiveActive = liveState != LiveSessionViewModel.LiveState.IDLE
 
-    AnimatedContent(
-        targetState = isLiveActive,
-        transitionSpec = {
-            fadeIn(tween(200)) togetherWith fadeOut(tween(150))
-        },
-        label = "inputBarMode"
-    ) { live ->
-        if (live) {
-            LiveModeBar(
-                liveState = liveState,
-                isMuted = isMuted,
-                activeSpeaker = activeSpeaker,
-                inputAmplitude = inputAmplitude,
-                outputAmplitude = outputAmplitude,
-                currentAudioDevice = currentAudioDevice,
-                onAudioDeviceChange = onAudioDeviceChange,
-                hasBluetooth = hasBluetooth,
-                onEnd = onLiveEnd,
-                onMuteToggle = onLiveMuteToggle,
-                onTextSend = onLiveTextSend,
-                onAttachClick = onAttachClick,
-                pastedImages = pastedImages,
-                onImagePasted = onImagePasted,
-                onImageRemoved = onImageRemoved,
-                modifier = modifier
-            )
-        } else {
-            NormalModeBar(
-                value = value,
-                onValueChange = onValueChange,
-                onSend = onSend,
-                onMicClick = onMicClick,
-                onAttachClick = onAttachClick,
-                onLiveClick = onLiveClick,
-                pastedImages = pastedImages,
-                onImagePasted = onImagePasted,
-                onImageRemoved = onImageRemoved,
-                focusRequester = focusRequester,
-                modifier = modifier
-            )
-        }
-    }
-}
-
-// ─── Normal mode — identical to old design, Live icon now wired ─────────────
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun NormalModeBar(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onMicClick: () -> Unit,
-    onAttachClick: () -> Unit,
-    onLiveClick: () -> Unit,
-    pastedImages: List<Uri>,
-    onImagePasted: (Uri) -> Unit,
-    onImageRemoved: (Uri) -> Unit,
-    focusRequester: FocusRequester,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalThemeManager.current.currentTheme
-    val context = LocalContext.current
-    var isFocused by remember { mutableStateOf(false) }
-
-    // Monitor clipboard for image content
-    val clipboardManager = remember {
-        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-    }
-    var clipboardHasImage by remember { mutableStateOf(false) }
-
-    // Check clipboard when input gains focus or periodically
-    LaunchedEffect(isFocused) {
-        if (isFocused) {
-            clipboardHasImage = checkClipboardForImage(clipboardManager)
-        }
-    }
-
-    // Also re-check when window gets focus (user may have copied an image outside)
-    LaunchedEffect(Unit) {
-        clipboardManager.addPrimaryClipChangedListener {
-            clipboardHasImage = checkClipboardForImage(clipboardManager)
-        }
-    }
-
-    val borderColor by animateColorAsState(
-        targetValue = if (isFocused) palette.accent.copy(alpha = 0.3f) else palette.surfaceContainerHighest,
-        label = "borderColor"
-    )
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(palette.surface)
+    AnimatedVisibility(
+        visible = isLiveActive,
+        enter = fadeIn(tween(200)) + expandVertically(expandFrom = Alignment.Bottom),
+        exit = fadeOut(tween(150)) + shrinkVertically(shrinkTowards = Alignment.Bottom)
     ) {
-        // ─── Image preview strip ────────────────────────────────────
-        AnimatedVisibility(
-            visible = pastedImages.isNotEmpty(),
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 64.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                pastedImages.forEach { uri ->
-                    PastedImageThumbnail(
-                        uri = uri,
-                        palette = palette,
-                        onRemove = { onImageRemoved(uri) }
-                    )
-                }
-            }
-        }
-
-        // ─── "Paste image" chip — shown when clipboard has an image ──
-        AnimatedVisibility(
-            visible = clipboardHasImage && isFocused && pastedImages.isEmpty(),
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Row(
-                modifier = Modifier
-                    .padding(start = 64.dp, end = 16.dp, top = 6.dp, bottom = 2.dp)
-            ) {
-                Surface(
-                    onClick = {
-                        // Extract image URI from clipboard
-                        val clip = clipboardManager.primaryClip
-                        if (clip != null && clip.itemCount > 0) {
-                            for (i in 0 until clip.itemCount) {
-                                clip.getItemAt(i).uri?.let { uri ->
-                                    onImagePasted(uri)
-                                }
-                            }
-                        }
-                        clipboardHasImage = false
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    color = palette.surfaceContainerHigh,
-                    contentColor = palette.textSecondary,
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Outlined.ContentPaste,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = palette.textSecondary
-                        )
-                        Text(
-                            text = "Paste image",
-                            fontSize = 13.sp,
-                            color = palette.textSecondary
-                        )
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 16.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // + button
-            IconButton(
-                onClick = onAttachClick,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(palette.surfaceContainerHigh)
-            ) {
-                Icon(
-                    Icons.Outlined.Add,
-                    contentDescription = "Attach",
-                    tint = palette.textSecondary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // Input container
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(palette.surfaceContainer)
-                    .border(0.5.dp, borderColor, RoundedCornerShape(24.dp))
-                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    // Rich content EditText — tells keyboard we accept images
-                    RichContentEditText(
-                        value = value,
-                        onValueChange = onValueChange,
-                        onImageReceived = onImagePasted,
-                        onFocusChange = { isFocused = it },
-                        placeholder = if (pastedImages.isEmpty()) "Ask Apsara" else "",
-                        textColor = palette.textPrimary,
-                        hintColor = palette.textTertiary,
-                        cursorColor = palette.accent,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                if (value.isNotEmpty() || pastedImages.isNotEmpty()) {
-                    IconButton(
-                        onClick = onSend,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(palette.accent)
-                    ) {
-                        Icon(
-                            Icons.Outlined.ArrowUpward,
-                            contentDescription = "Send",
-                            tint = palette.surface,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                } else {
-                    // Mic button (transcript — future)
-                    IconButton(
-                        onClick = onMicClick,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            Icons.Filled.Mic,
-                            contentDescription = "Voice",
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Live button — THIS is the only trigger for live mode
-                    IconButton(
-                        onClick = onLiveClick,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(palette.surfaceContainerHigh)
-                    ) {
-                        Icon(
-                            Icons.Outlined.GraphicEq,
-                            contentDescription = "Live",
-                            tint = palette.textPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        }
+        LiveModeBar(
+            liveState = liveState,
+            isMuted = isMuted,
+            activeSpeaker = activeSpeaker,
+            inputAmplitude = inputAmplitude,
+            outputAmplitude = outputAmplitude,
+            currentAudioDevice = currentAudioDevice,
+            onAudioDeviceChange = onAudioDeviceChange,
+            hasBluetooth = hasBluetooth,
+            onEnd = onLiveEnd,
+            onMuteToggle = onLiveMuteToggle,
+            onTextSend = onLiveTextSend,
+            onAttachClick = onAttachClick,
+            pastedImages = pastedImages,
+            onImagePasted = onImagePasted,
+            onImageRemoved = onImageRemoved,
+            modifier = modifier
+        )
     }
 }
 
@@ -876,24 +615,3 @@ private fun PastedImageThumbnail(
     }
 }
 
-// ─── Clipboard image detection helper ────────────────────────────────────────
-
-private fun checkClipboardForImage(clipboardManager: android.content.ClipboardManager): Boolean {
-    val clip = clipboardManager.primaryClip ?: return false
-    val description = clip.description
-    for (i in 0 until description.mimeTypeCount) {
-        val mimeType = description.getMimeType(i)
-        if (mimeType.startsWith("image/")) return true
-    }
-    // Also check if any item has a URI (could be an image)
-    for (i in 0 until clip.itemCount) {
-        val uri = clip.getItemAt(i).uri
-        if (uri != null) {
-            val mimeType = try {
-                clipboardManager.primaryClipDescription?.getMimeType(0)
-            } catch (_: Exception) { null }
-            if (mimeType?.startsWith("image/") == true) return true
-        }
-    }
-    return false
-}
