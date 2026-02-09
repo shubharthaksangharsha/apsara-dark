@@ -83,6 +83,9 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
   // Enable output audio transcription
   outputAudioTranscription: true,
 
+  // Media resolution for video/image input (MEDIA_RESOLUTION_LOW, MEDIA_RESOLUTION_MEDIUM, MEDIA_RESOLUTION_HIGH)
+  mediaResolution: null,
+
   // Tools configuration
   tools: {
     googleSearch: false,

@@ -1,6 +1,8 @@
 package com.shubharthak.apsaradark.ui.components
 
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.util.Log
@@ -34,6 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -45,12 +51,14 @@ import com.shubharthak.apsaradark.ui.theme.LocalThemeManager
 import kotlinx.coroutines.delay
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
+import android.graphics.BitmapFactory
 
 /**
  * Full-width camera preview card with overlay icons for flash, flip, minimize, close.
  * - Tap anywhere to show a round focus ring animation + actually trigger CameraX autofocus.
+ * - Draw mode: single-finger draws white annotation strokes on the camera preview.
+ * - Annotations are composited onto captured frames sent to the backend.
  * - Icons auto-hide after 3 seconds of inactivity.
- * - Sends JPEG frames to the backend at a throttled interval.
  *
  * Camera settings (useFrontCamera, flashEnabled) are hoisted so they survive minimize/restore.
  */
@@ -88,6 +96,13 @@ fun CameraPreviewCard(
     var currentZoomRatio by remember { mutableFloatStateOf(1f) }
     var showZoomIndicator by remember { mutableStateOf(false) }
 
+    // ─── Annotation / Drawing state ─────────────────────────────────────────
+    var isDrawMode by remember { mutableStateOf(false) }
+    // Each stroke is a list of Offset points
+    val annotationStrokes = remember { mutableStateListOf<List<Offset>>() }
+    // Current stroke being drawn (live)
+    var currentStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
+
     // Auto-hide overlay timer
     LaunchedEffect(overlayResetKey) {
         showOverlay = true
@@ -121,6 +136,12 @@ fun CameraPreviewCard(
             delay(1200)
             showZoomIndicator = false
         }
+    }
+
+    // Snapshot of annotation strokes for the frame capture thread
+    val strokesSnapshot = remember { mutableStateOf<List<List<Offset>>>(emptyList()) }
+    LaunchedEffect(annotationStrokes.size) {
+        strokesSnapshot.value = annotationStrokes.toList()
     }
 
     // Frame throttle: send one frame every ~1 second
@@ -158,7 +179,15 @@ fun CameraPreviewCard(
                     lastFrameTime.longValue = now
                     val jpegBytes = imageProxyToJpeg(imageProxy)
                     if (jpegBytes != null) {
-                        onFrameCaptured(jpegBytes)
+                        // Composite annotations onto the frame if any exist
+                        val strokes = strokesSnapshot.value
+                        val currentViewSize = viewSize
+                        val composited = if (strokes.isNotEmpty() && currentViewSize.width > 0 && currentViewSize.height > 0) {
+                            compositeAnnotationsOnFrame(jpegBytes, strokes, currentViewSize, imageProxy.width, imageProxy.height)
+                        } else {
+                            jpegBytes
+                        }
+                        onFrameCaptured(composited)
                     }
                 }
                 imageProxy.close()
@@ -173,9 +202,7 @@ fun CameraPreviewCard(
                     imageAnalysis
                 )
                 activeCamera = camera
-                // Apply current flash state
                 camera.cameraControl.enableTorch(flashEnabled && !useFrontCamera)
-                // Reset zoom to 1x on camera switch
                 currentZoomRatio = 1f
                 camera.cameraControl.setZoomRatio(1f)
             } catch (e: Exception) {
@@ -184,7 +211,7 @@ fun CameraPreviewCard(
         }, context.mainExecutor)
     }
 
-    // Update torch when flash toggles — direct control via camera reference
+    // Update torch when flash toggles
     LaunchedEffect(flashEnabled) {
         activeCamera?.let { camera ->
             try {
@@ -207,59 +234,105 @@ fun CameraPreviewCard(
             .aspectRatio(4f / 3f)
             .clip(RoundedCornerShape(16.dp))
             .onSizeChanged { viewSize = it }
-            // Combined tap-to-focus + pinch-to-zoom
-            .pointerInput(Unit) {
+            .pointerInput(isDrawMode) {
                 awaitEachGesture {
                     val firstDown = awaitFirstDown(requireUnconsumed = false)
                     val firstDownPos = firstDown.position
                     var isPinching = false
+                    var isDragging = false
 
-                    do {
-                        val event = awaitPointerEvent()
-                        val fingerCount = event.changes.count { it.pressed }
+                    if (isDrawMode) {
+                        // ── Drawing mode: single-finger draws strokes ──
+                        currentStroke = listOf(firstDownPos)
+                        isDragging = true
 
-                        if (fingerCount >= 2) {
-                            // Multi-finger → pinch-to-zoom
-                            isPinching = true
-                            val zoomChange = event.calculateZoom()
-                            if (zoomChange != 1f) {
-                                activeCamera?.let { camera ->
-                                    val zoomState = camera.cameraInfo.zoomState.value
-                                    if (zoomState != null) {
-                                        val newRatio = (currentZoomRatio * zoomChange)
-                                            .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
-                                        currentZoomRatio = newRatio
-                                        camera.cameraControl.setZoomRatio(newRatio)
-                                        showZoomIndicator = true
-                                        overlayResetKey++
+                        do {
+                            val event = awaitPointerEvent()
+                            val fingerCount = event.changes.count { it.pressed }
+
+                            if (fingerCount >= 2) {
+                                // Even in draw mode, allow pinch-to-zoom
+                                isPinching = true
+                                isDragging = false
+                                currentStroke = emptyList()
+                                val zoomChange = event.calculateZoom()
+                                if (zoomChange != 1f) {
+                                    activeCamera?.let { camera ->
+                                        val zoomState = camera.cameraInfo.zoomState.value
+                                        if (zoomState != null) {
+                                            val newRatio = (currentZoomRatio * zoomChange)
+                                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                                            currentZoomRatio = newRatio
+                                            camera.cameraControl.setZoomRatio(newRatio)
+                                            showZoomIndicator = true
+                                            overlayResetKey++
+                                        }
                                     }
                                 }
-                            }
-                            event.changes.forEach { it.consume() }
-                        }
-                    } while (event.changes.any { it.pressed })
-
-                    // If it was a simple single-finger tap (not a pinch), trigger focus
-                    if (!isPinching) {
-                        focusPoint = firstDownPos
-                        showFocusRing = true
-                        overlayResetKey++
-
-                        activeCamera?.let { camera ->
-                            try {
-                                if (viewSize.width > 0 && viewSize.height > 0) {
-                                    val factory = SurfaceOrientedMeteringPointFactory(
-                                        viewSize.width.toFloat(),
-                                        viewSize.height.toFloat()
-                                    )
-                                    val point = factory.createPoint(firstDownPos.x, firstDownPos.y)
-                                    val action = FocusMeteringAction.Builder(point)
-                                        .disableAutoCancel()
-                                        .build()
-                                    camera.cameraControl.startFocusAndMetering(action)
+                                event.changes.forEach { it.consume() }
+                            } else if (isDragging && fingerCount == 1) {
+                                val pos = event.changes.firstOrNull()?.position
+                                if (pos != null) {
+                                    currentStroke = currentStroke + pos
                                 }
-                            } catch (e: Exception) {
-                                Log.w("CameraPreview", "Focus failed: ${e.message}")
+                                event.changes.forEach { it.consume() }
+                            }
+                        } while (event.changes.any { it.pressed })
+
+                        // Commit stroke if we were drawing
+                        if (isDragging && currentStroke.size >= 2) {
+                            annotationStrokes.add(currentStroke.toList())
+                        }
+                        currentStroke = emptyList()
+                        overlayResetKey++
+                    } else {
+                        // ── Normal mode: tap-to-focus + pinch-to-zoom ──
+                        do {
+                            val event = awaitPointerEvent()
+                            val fingerCount = event.changes.count { it.pressed }
+
+                            if (fingerCount >= 2) {
+                                isPinching = true
+                                val zoomChange = event.calculateZoom()
+                                if (zoomChange != 1f) {
+                                    activeCamera?.let { camera ->
+                                        val zoomState = camera.cameraInfo.zoomState.value
+                                        if (zoomState != null) {
+                                            val newRatio = (currentZoomRatio * zoomChange)
+                                                .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                                            currentZoomRatio = newRatio
+                                            camera.cameraControl.setZoomRatio(newRatio)
+                                            showZoomIndicator = true
+                                            overlayResetKey++
+                                        }
+                                    }
+                                }
+                                event.changes.forEach { it.consume() }
+                            }
+                        } while (event.changes.any { it.pressed })
+
+                        // Single-finger tap → focus
+                        if (!isPinching) {
+                            focusPoint = firstDownPos
+                            showFocusRing = true
+                            overlayResetKey++
+
+                            activeCamera?.let { camera ->
+                                try {
+                                    if (viewSize.width > 0 && viewSize.height > 0) {
+                                        val factory = SurfaceOrientedMeteringPointFactory(
+                                            viewSize.width.toFloat(),
+                                            viewSize.height.toFloat()
+                                        )
+                                        val point = factory.createPoint(firstDownPos.x, firstDownPos.y)
+                                        val action = FocusMeteringAction.Builder(point)
+                                            .disableAutoCancel()
+                                            .build()
+                                        camera.cameraControl.startFocusAndMetering(action)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("CameraPreview", "Focus failed: ${e.message}")
+                                }
                             }
                         }
                     }
@@ -272,6 +345,39 @@ fun CameraPreviewCard(
             modifier = Modifier.fillMaxSize()
         )
 
+        // ─── Annotation strokes overlay ─────────────────────────────────────
+        if (annotationStrokes.isNotEmpty() || currentStroke.isNotEmpty()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeStyle = Stroke(
+                    width = 4.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+                // Draw committed strokes
+                for (stroke in annotationStrokes) {
+                    if (stroke.size >= 2) {
+                        val path = Path().apply {
+                            moveTo(stroke[0].x, stroke[0].y)
+                            for (i in 1 until stroke.size) {
+                                lineTo(stroke[i].x, stroke[i].y)
+                            }
+                        }
+                        drawPath(path, Color.White, style = strokeStyle)
+                    }
+                }
+                // Draw live (current) stroke
+                if (currentStroke.size >= 2) {
+                    val path = Path().apply {
+                        moveTo(currentStroke[0].x, currentStroke[0].y)
+                        for (i in 1 until currentStroke.size) {
+                            lineTo(currentStroke[i].x, currentStroke[i].y)
+                        }
+                    }
+                    drawPath(path, Color.White.copy(alpha = 0.7f), style = strokeStyle)
+                }
+            }
+        }
+
         // Focus ring animation
         if (focusPoint != null && focusAlpha > 0f) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -280,9 +386,7 @@ fun CameraPreviewCard(
                         color = Color.White.copy(alpha = focusAlpha * 0.8f),
                         radius = 36.dp.toPx() * focusScale,
                         center = point,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(
-                            width = 2.dp.toPx()
-                        )
+                        style = Stroke(width = 2.dp.toPx())
                     )
                 }
             }
@@ -307,6 +411,29 @@ fun CameraPreviewCard(
                     text = "%.1f×".format(currentZoomRatio),
                     color = Color.White,
                     style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
+        // ─── Draw-mode indicator pill (top-center) ──────────────────────────
+        AnimatedVisibility(
+            visible = isDrawMode,
+            enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.8f, animationSpec = tween(200)),
+            exit = fadeOut(tween(300)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .padding(horizontal = 10.dp, vertical = 3.dp)
+            ) {
+                androidx.compose.material3.Text(
+                    text = "Draw mode",
+                    color = Color.White,
+                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall
                 )
             }
         }
@@ -349,7 +476,7 @@ fun CameraPreviewCard(
                     icon = Icons.Outlined.FlipCameraAndroid,
                     contentDescription = "Flip camera",
                     onClick = {
-                        onFlashEnabledChange(false) // Reset flash on flip
+                        onFlashEnabledChange(false)
                         onUseFrontCameraChange(!useFrontCamera)
                         overlayResetKey++
                     },
@@ -358,17 +485,46 @@ fun CameraPreviewCard(
                         .padding(12.dp)
                 )
 
+                // Bottom-center: Draw toggle
+                OverlayIconButton(
+                    icon = if (isDrawMode) Icons.Outlined.Draw else Icons.Outlined.Edit,
+                    contentDescription = if (isDrawMode) "Exit draw mode" else "Enter draw mode",
+                    onClick = {
+                        isDrawMode = !isDrawMode
+                        overlayResetKey++
+                    },
+                    tintColor = if (isDrawMode) palette.accent else Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(12.dp)
+                )
+
                 // Bottom-right: Minimize
                 OverlayIconButton(
                     icon = Icons.Outlined.PictureInPicture,
                     contentDescription = "Minimize video",
-                    onClick = {
-                        onMinimize()
-                    },
+                    onClick = { onMinimize() },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(12.dp)
                 )
+
+                // Clear annotations button — top-left (or second from top-left)
+                // Only visible when there are annotations
+                if (annotationStrokes.isNotEmpty()) {
+                    OverlayIconButton(
+                        icon = Icons.Outlined.Delete,
+                        contentDescription = "Clear annotations",
+                        onClick = {
+                            annotationStrokes.clear()
+                            overlayResetKey++
+                        },
+                        tintColor = Color(0xFFFF6B6B),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = if (!useFrontCamera) 56.dp else 12.dp, top = 12.dp)
+                    )
+                }
             }
         }
     }
@@ -382,7 +538,8 @@ private fun OverlayIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tintColor: Color = Color.White
 ) {
     Box(
         modifier = modifier
@@ -399,7 +556,7 @@ private fun OverlayIconButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color.White,
+            tint = tintColor,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -444,6 +601,57 @@ fun MinimizedVideoIndicator(
             tint = Color.White,
             modifier = Modifier.size(22.dp)
         )
+    }
+}
+
+/**
+ * Composite annotation strokes onto a camera JPEG frame.
+ * Maps stroke coordinates from the Compose view space → the actual image pixel space.
+ */
+private fun compositeAnnotationsOnFrame(
+    jpegBytes: ByteArray,
+    strokes: List<List<Offset>>,
+    viewSize: IntSize,
+    imageWidth: Int,
+    imageHeight: Int
+): ByteArray {
+    return try {
+        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+            ?: return jpegBytes
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = android.graphics.Canvas(mutableBitmap)
+
+        val paint = Paint().apply {
+            color = android.graphics.Color.WHITE
+            strokeWidth = 6f * (mutableBitmap.width.toFloat() / viewSize.width)
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            isAntiAlias = true
+        }
+
+        val scaleX = mutableBitmap.width.toFloat() / viewSize.width
+        val scaleY = mutableBitmap.height.toFloat() / viewSize.height
+
+        for (stroke in strokes) {
+            if (stroke.size >= 2) {
+                val path = android.graphics.Path()
+                path.moveTo(stroke[0].x * scaleX, stroke[0].y * scaleY)
+                for (i in 1 until stroke.size) {
+                    path.lineTo(stroke[i].x * scaleX, stroke[i].y * scaleY)
+                }
+                canvas.drawPath(path, paint)
+            }
+        }
+
+        val out = ByteArrayOutputStream()
+        mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 60, out)
+        bitmap.recycle()
+        mutableBitmap.recycle()
+        out.toByteArray()
+    } catch (e: Exception) {
+        Log.e("CameraPreview", "Annotation compositing failed", e)
+        jpegBytes
     }
 }
 

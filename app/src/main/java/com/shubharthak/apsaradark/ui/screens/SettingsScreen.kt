@@ -401,6 +401,15 @@ private fun LiveSettingsPanel(
             palette = palette
         )
 
+        // Media Resolution
+        SettingsDropdown(
+            label = "Media Resolution",
+            value = liveSettings.mediaResolution,
+            options = LiveSettingsManager.availableMediaResolutions,
+            onSelect = { liveSettings.updateMediaResolution(it) },
+            palette = palette
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
     }
 }

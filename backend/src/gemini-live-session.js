@@ -111,6 +111,18 @@ export class GeminiLiveSession {
       config.outputAudioTranscription = {};
     }
 
+    // Media resolution for video/image input
+    if (this.config.mediaResolution) {
+      const resolutionMap = {
+        'LOW': 'MEDIA_RESOLUTION_LOW',
+        'MEDIUM': 'MEDIA_RESOLUTION_MEDIUM',
+        'HIGH': 'MEDIA_RESOLUTION_HIGH',
+      };
+      const mapped = resolutionMap[this.config.mediaResolution] || this.config.mediaResolution;
+      config.mediaResolution = mapped;
+      console.log('[GeminiLive] Media resolution:', mapped);
+    }
+
     // Tools
     const tools = [];
     if (this.config.tools?.googleSearch) {

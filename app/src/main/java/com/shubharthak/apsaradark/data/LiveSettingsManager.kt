@@ -69,6 +69,10 @@ class LiveSettingsManager(context: Context) {
     var toolServerInfoAsync by mutableStateOf(prefs.getBoolean("tool_server_info_async", false))
         private set
 
+    // Media resolution for video/image input (LOW, MEDIUM, HIGH)
+    var mediaResolution by mutableStateOf(prefs.getString("media_resolution", "MEDIUM") ?: "MEDIUM")
+        private set
+
     // General Settings
     var hapticFeedback by mutableStateOf(prefs.getBoolean("haptic_feedback", false))
         private set
@@ -90,6 +94,7 @@ class LiveSettingsManager(context: Context) {
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
     fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
     fun updateToolServerInfoAsync(v: Boolean) { toolServerInfoAsync = v; prefs.edit().putBoolean("tool_server_info_async", v).apply() }
+    fun updateMediaResolution(v: String) { mediaResolution = v; prefs.edit().putString("media_resolution", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
     fun buildConfigMap(): Map<String, Any?> {
@@ -103,6 +108,7 @@ class LiveSettingsManager(context: Context) {
         config["inputAudioTranscription"] = inputTranscription
         config["outputAudioTranscription"] = outputTranscription
         config["includeThoughts"] = includeThoughts
+        config["mediaResolution"] = mediaResolution
         if (systemInstruction.isNotBlank()) {
             config["systemInstruction"] = systemInstruction
         }
@@ -140,6 +146,7 @@ class LiveSettingsManager(context: Context) {
         val availableModels = listOf(
             "gemini-2.5-flash-native-audio-preview-12-2025"
         )
+        val availableMediaResolutions = listOf("LOW", "MEDIUM", "HIGH")
     }
 }
 
