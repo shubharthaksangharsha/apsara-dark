@@ -1,13 +1,11 @@
 package com.shubharthak.apsaradark.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
@@ -16,9 +14,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shubharthak.apsaradark.R
 import com.shubharthak.apsaradark.data.MockData
 import com.shubharthak.apsaradark.ui.components.*
 import com.shubharthak.apsaradark.ui.theme.*
@@ -55,39 +59,45 @@ fun HomeScreen() {
         Scaffold(
             containerColor = SurfaceDark,
             topBar = {
+                // Shimmer animation for title
+                val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+                val shimmerOffset by infiniteTransition.animateFloat(
+                    initialValue = -200f,
+                    targetValue = 600f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2400, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "shimmerOffset"
+                )
+                val shimmerBrush = Brush.linearGradient(
+                    colors = listOf(
+                        TextPrimary,
+                        Purple80,
+                        TextPrimary
+                    ),
+                    start = Offset(shimmerOffset, 0f),
+                    end = Offset(shimmerOffset + 200f, 0f)
+                )
+
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
+                            Image(
+                                painter = painterResource(id = R.mipmap.ic_launcher),
+                                contentDescription = "Apsara Logo",
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(34.dp)
                                     .clip(CircleShape)
-                                    .background(AccentSubtle),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "A",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Purple80
-                                )
-                            }
+                            )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    "Apsara Dark",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextPrimary,
-                                    letterSpacing = 0.2.sp
-                                )
-                                Text(
-                                    "Online · Ready",
-                                    fontSize = 12.sp,
-                                    color = StatusGreen,
-                                    letterSpacing = 0.3.sp
-                                )
-                            }
+                            Text(
+                                "Apsara Dark",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                style = TextStyle(brush = shimmerBrush),
+                                letterSpacing = 0.2.sp
+                            )
                         }
                     },
                     navigationIcon = {
@@ -177,23 +187,6 @@ fun HomeScreen() {
                         }
                     }
                     Spacer(modifier = Modifier.height(28.dp))
-                }
-
-                // Recent conversation
-                item {
-                    Text(
-                        text = "Recent",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextTertiary,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                    )
-                }
-
-                items(MockData.recentChats) { message ->
-                    ChatBubble(message = message)
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
                 item {

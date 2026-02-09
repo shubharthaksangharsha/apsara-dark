@@ -46,14 +46,22 @@ com.shubharthak.apsaradark
 
 ---
 
-## v0.1.1 — Logo Integration (Feb 9, 2026)
+## v0.2.0 — UI Cleanup & Logo in App (Feb 9, 2026)
 
 ### What was done
 
-- **Launcher icon**: Generated `apsara_logo.png` into all Android mipmap densities (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi).
-- **Adaptive icon**: Foreground uses the real Apsara logo; background is dark (`#0D0D0D`).
-- **Round icon**: Same logo, clipped by system circle mask.
-- Removed the old placeholder vector drawable.
+- **Logo in top bar**: Replaced placeholder "A" circle with actual `apsara_logo.png` image.
+- **Animated title**: "Apsara Dark" text in top bar has a purple shimmer animation.
+- **Removed "Online · Ready"** status from top bar — clean look.
+- **Drawer cleanup**:
+  - Removed "Apsara / Your AI companion" header and close button.
+  - Removed "Latest Videos" item.
+  - Removed plugin badge count.
+  - Removed bottom "v0.1.0 — Online" status footer.
+  - Items now: My Canvas, My Plugins, Laptop Control, Settings.
+- **Feature cards**: Removed subtitles — now just icon + title (Talk, Design, Control, Reminders).
+- **Removed recent chat history** section and `ChatBubble` component entirely.
+- **Removed `ChatMessage`** data class — no longer needed.
 
 ---
 

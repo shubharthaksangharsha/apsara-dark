@@ -57,15 +57,6 @@ fun FeatureCard(
                 color = TextPrimary,
                 letterSpacing = 0.1.sp
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = feature.subtitle,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Normal,
-                color = TextTertiary,
-                lineHeight = 18.sp,
-                letterSpacing = 0.2.sp
-            )
         }
     }
 }
