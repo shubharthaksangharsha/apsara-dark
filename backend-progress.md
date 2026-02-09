@@ -230,3 +230,37 @@ backend/src/
 - **Disconnect reason fixed**: `onclose` handler now distinguishes between client-initiated disconnect (`client disconnected`) and server-initiated close (`server closed connection`), instead of showing `unknown`.
 - **Disconnect logging**: `disconnect()` method now logs `[GeminiLive] Disconnecting (client requested)...` and sets `connected = false` before closing, so the `onclose` callback can infer the reason.
 - **Close code logged**: `onclose` now logs the WebSocket close code alongside the reason.
+
+---
+
+## v1.4.0 — Per-Tool Async/Sync Function Calling (Feb 10, 2026)
+
+### What was done
+
+- **Per-tool async/sync control**: Replaced the global `asyncFunctionCalls` boolean with a per-tool `toolAsyncModes` map (`{ toolName: boolean }`). Each tool can now independently be configured as async (NON_BLOCKING) or sync (blocking).
+
+- **`config.js`**: Default config changed from `asyncFunctionCalls: false` to `toolAsyncModes: {}`.
+
+- **`gemini-live-session.js`**: `_buildGeminiConfig()` reads `toolAsyncModes` from the session config. For each function declaration, if `toolAsyncModes[toolName] === true`, the declaration gets `behavior: { NON_BLOCKING: {} }` (Gemini continues speaking while the tool executes). Otherwise, the tool defaults to blocking behavior.
+
+- **`ws-handler.js`**: `onToolCall` handler now partitions incoming function calls into two groups based on `toolAsyncModes`:
+  - **Sync tools**: Executed sequentially, responses sent with default scheduling.
+  - **Async tools**: Executed concurrently via `Promise.all`, responses sent with `scheduling: 'INTERRUPT'` so Gemini can integrate results mid-turn.
+  - Added `tool_call` and `tool_results` message types forwarded to the client for real-time UI status cards.
+
+### Protocol additions
+
+#### Server → Client messages (new)
+| Type | Fields | Description |
+|------|--------|-------------|
+| `tool_call` | `functionCalls: [{name, id, args}]` | Gemini is invoking tools — shown as "running" cards in UI |
+| `tool_results` | `results: [{id, name, response}]`, `mode` | Tool execution completed — updates cards to "completed" |
+
+### Files changed
+
+```
+backend/src/
+├── config.js              — toolAsyncModes replaces asyncFunctionCalls
+├── ws-handler.js          — Per-tool async/sync partitioning, tool_call/tool_results events
+└── gemini-live-session.js — Per-tool NON_BLOCKING in _buildGeminiConfig()
+```

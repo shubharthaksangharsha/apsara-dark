@@ -351,3 +351,59 @@ backend/src/
 app/src/main/java/com/shubharthak/apsaradark/
 └── live/LiveAudioManager.kt          — Shared audio session, AudioTrack restart on route change
 ```
+
+---
+
+## v2.5.0 — Per-Tool Async/Sync, Audio Routing Fix, Tool Call UI (Feb 10, 2026)
+
+### What was done
+
+- **Per-tool async/sync toggles (Frontend)**:
+  - `PluginsScreen` — Each tool card now has its own async/sync toggle instead of a single global toggle. Toggle state stored per-tool in `LiveSettingsManager`.
+  - `LiveSettingsManager` — `toolAsyncModes` map (`{ toolName: Boolean }`) persisted to SharedPreferences. Sent to backend in `buildConfigMap()`.
+
+- **Audio output routing fix**:
+  - `LiveAudioManager.kt` — `AudioTrack` is now created *after* `AudioRecord` starts, sharing the same audio session ID. This ensures `MODE_IN_COMMUNICATION` is active before the `AudioTrack` is built, so `isSpeakerphoneOn` routing (loudspeaker/earpiece/bluetooth) works correctly.
+  - `LiveSessionViewModel.kt` — `startAudio()` now calls `startRecording()` first, then `startPlayback()`.
+  - `AndroidManifest.xml` — Added `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH`, and `BLUETOOTH_CONNECT` permissions.
+
+- **Audio output device dropdown UI**:
+  - `BottomInputBar.kt` — `DropdownMenu` offset left by 120dp so it doesn't clip off the right edge of the screen.
+
+- **Tool call status cards in chat**:
+  - `LiveWebSocketClient.kt` — Parses `tool_call` and `tool_results` WebSocket messages into `ToolCallEvent` and `ToolResultEvent` flows.
+  - `LiveSessionViewModel.kt` — Accumulates tool calls in a `pendingToolCalls` buffer and attaches them as `EmbeddedToolCall` objects inside the next/current APSARA message.
+  - `LiveMessage` — Added `toolCalls: List<EmbeddedToolCall>` field for embedded tool calls, plus `ToolStatus` enum and backward-compat `TOOL_CALL` role.
+  - `EmbeddedToolCall` data class — Holds tool name, id, status (RUNNING/COMPLETED), mode (sync/async), and result JSON.
+
+- **Tool call card placement & cleanup**:
+  - `ApsaraBubble` — Now accepts `toolCalls` parameter and renders `ToolCallCard` components **after the collapsible "Thoughts" section** and **before the main response text**.
+  - Removed bolt (`Icons.Outlined.Bolt`) and build (`Icons.Outlined.Build`) icons from tool call cards — only the status spinner (running) or checkmark (completed) is shown.
+  - Tool calls no longer appear as separate chat items in the LazyColumn — they are embedded inside the Apsara message.
+  - `ToolCallCard` — Inline composable with status icon, tool name, async/sync mode label, and expandable JSON result on tap.
+
+### New data classes
+
+```kotlin
+data class EmbeddedToolCall(
+    val name: String,
+    val id: String,
+    val status: LiveMessage.ToolStatus,
+    val mode: String,      // "sync" or "async"
+    val result: String?
+)
+```
+
+### Files changed
+
+```
+app/src/main/
+├── AndroidManifest.xml                           — Added MODIFY_AUDIO_SETTINGS, BLUETOOTH permissions
+├── java/com/shubharthak/apsaradark/
+│   ├── live/
+│   │   ├── LiveSessionViewModel.kt               — EmbeddedToolCall, pendingToolCalls buffer, tool call/result handlers
+│   │   └── LiveWebSocketClient.kt                — ToolCallEvent, ToolResultEvent flows, tool_call/tool_results parsing
+│   └── ui/
+│       ├── components/BottomInputBar.kt           — Dropdown offset fix
+│       └── screens/HomeScreen.kt                  — ApsaraBubble with embedded tool calls, ToolCallCard, removed Bolt/Build icons
+```
