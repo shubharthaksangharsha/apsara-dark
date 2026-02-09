@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -356,6 +357,7 @@ private fun LiveModeContent(
                         LiveMessage.Role.APSARA -> ApsaraBubble(
                             text = message.text,
                             isStreaming = message.isStreaming,
+                            thought = message.thought,
                             palette = palette
                         )
                     }
@@ -393,28 +395,63 @@ private fun UserBubble(
     }
 }
 
-// ─── Apsara output — plain text, no bubble, no animation ────────────────────
+// ─── Apsara output — plain text, no bubble, collapsible thoughts ────────────
 
 @Composable
 private fun ApsaraBubble(
     text: String,
     isStreaming: Boolean,
+    thought: String?,
     palette: ApsaraColorPalette
 ) {
-    // Plain text — no bubble, no border, no streaming cursor
-    // Text is shown as soon as received (async), not waiting for turn complete
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
+    var thoughtsExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 6.dp)
     ) {
+        // Main text — plain, no bubble
         Text(
             text = text,
             fontSize = 15.sp,
             color = palette.textPrimary,
             lineHeight = 22.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 6.dp)
+            modifier = Modifier.fillMaxWidth()
         )
+
+        // Collapsible "Thoughts" section — only shown when thought text exists
+        if (!thought.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { thoughtsExpanded = !thoughtsExpanded }
+                    .padding(vertical = 4.dp, horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (thoughtsExpanded) "▾ Thoughts" else "▸ Thoughts",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textTertiary
+                )
+            }
+            AnimatedVisibility(
+                visible = thoughtsExpanded,
+                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+            ) {
+                Text(
+                    text = thought,
+                    fontSize = 13.sp,
+                    color = palette.textTertiary,
+                    lineHeight = 19.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, top = 4.dp)
+                )
+            }
+        }
     }
 }

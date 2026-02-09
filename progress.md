@@ -59,9 +59,39 @@ com.shubharthak.apsaradark
   - Removed plugin badge count.
   - Removed bottom "v0.1.0 — Online" status footer.
   - Items now: My Canvas, My Plugins, Laptop Control, Settings.
-- **Feature cards**: Removed subtitles — now just icon + title (Talk, Design, Control, Reminders).
-- **Removed recent chat history** section and `ChatBubble` component entirely.
-- **Removed `ChatMessage`** data class — no longer needed.
+- **Main interface**:
+  - Top app bar with Apsara avatar, app name, and online status.
+  - Greeting section with user name.
+  - 2×2 feature card grid: **Talk**, **Design**, **Control**, **Reminders** — each with icon, title, and subtitle.
+  - Recent conversation section with mock chat bubbles (user + Apsara).
+- **Bottom input bar**:
+  - Text input with placeholder ("Ask Apsara anything…").
+  - Attach button (+ icon).
+  - Mic button (when empty) / Send button (when text is entered).
+  - Focus-aware animated border.
+- **Mock data**: Sample chat messages, drawer items, and feature cards — all using mock data, no backend yet.
+- **Debug APK**: Successfully assembled at `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Architecture
+
+```
+com.shubharthak.apsaradark
+├── MainActivity.kt
+├── data/
+│   └── MockData.kt
+└── ui/
+    ├── components/
+    │   ├── AppDrawer.kt
+    │   ├── BottomInputBar.kt
+    │   ├── ChatBubble.kt
+    │   └── FeatureCard.kt
+    ├── screens/
+    │   └── HomeScreen.kt
+    └── theme/
+        ├── Color.kt
+        ├── Theme.kt
+        └── Type.kt
+```
 
 ---
 
@@ -231,4 +261,44 @@ app/src/main/java/com/shubharthak/apsaradark/
 backend/src/
 ├── ws-handler.js                     — Improved error handling
 └── config.js                         — Single model support
+```
+
+---
+
+## v2.2.0 — TEXT Modality Removed, Thoughts UI, Config Logging (Feb 10, 2026)
+
+### What was done
+
+- **TEXT modality removed**: `gemini-2.5-flash-native-audio-preview-12-2025` only supports AUDIO modality. Removed TEXT option from:
+  - Backend: `MODALITIES` constant, forced AUDIO in `ws-handler.js` connect handler.
+  - Frontend: Removed `responseModality` setting, dropdown, and conditional voice logic from `LiveSettingsManager` and `SettingsScreen`.
+  - Voice selector is always enabled (always AUDIO modality).
+
+- **Config logging**: Backend now logs the full client config JSON when a session connects, plus tools config details (googleSearch on/off → tools array sent to Gemini). This helps debug config issues.
+
+- **Google Search toggle fix**: Added explicit logging of `tools.googleSearch` value vs. actual tools array sent to Gemini, so discrepancies can be identified. The toggle logic itself was correct — `if (this.config.tools?.googleSearch)` only adds `{ googleSearch: {} }` to the tools array when `true`.
+
+- **Thoughts UI**: When "Include Thoughts" is enabled in settings:
+  - Backend forwards `thought` message type (model reasoning text with `part.thought === true`).
+  - `LiveWebSocketClient` emits thoughts via a new `thought` SharedFlow.
+  - `LiveSessionViewModel` accumulates thought text and attaches it to Apsara messages.
+  - `LiveMessage` data class now has an optional `thought: String?` field.
+  - `ApsaraBubble` in HomeScreen shows a collapsible "▸ Thoughts" / "▾ Thoughts" section below Apsara's response text. Tap to expand/collapse.
+
+- **System Instruction Clear button**: Settings screen now shows a "Clear" text button next to the System Instruction label when text is present.
+
+### Files changed
+
+```
+backend/src/
+├── config.js                         — Removed TEXT from MODALITIES
+├── ws-handler.js                     — Config logging on connect, force AUDIO modality
+└── gemini-live-session.js            — Tools config logging
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/LiveSettingsManager.kt       — Removed responseModality, added clearSystemInstruction(), always AUDIO
+├── ui/screens/SettingsScreen.kt      — Removed modality dropdown, removed voice disable, added Clear button
+├── ui/screens/HomeScreen.kt          — ApsaraBubble with collapsible thoughts
+├── live/LiveSessionViewModel.kt      — Thought buffer, thought attachment to messages
+└── live/LiveWebSocketClient.kt       — thought SharedFlow
 ```

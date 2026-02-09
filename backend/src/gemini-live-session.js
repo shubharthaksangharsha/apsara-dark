@@ -80,13 +80,13 @@ export class GeminiLiveSession {
       }
     }
 
-    // Affective dialog
-    if (this.config.enableAffectiveDialog) {
+    // Affective dialog — only for AUDIO modality
+    if (isAudioModality && this.config.enableAffectiveDialog) {
       config.enableAffectiveDialog = true;
     }
 
-    // Proactive audio
-    if (this.config.proactiveAudio) {
+    // Proactive audio — only for AUDIO modality
+    if (isAudioModality && this.config.proactiveAudio) {
       config.proactivity = { proactiveAudio: true };
     }
 
@@ -100,13 +100,13 @@ export class GeminiLiveSession {
       config.includeThoughts = true;
     }
 
-    // Input audio transcription
-    if (this.config.inputAudioTranscription) {
+    // Input audio transcription — only for AUDIO modality (requires audio input)
+    if (isAudioModality && this.config.inputAudioTranscription) {
       config.inputAudioTranscription = {};
     }
 
-    // Output audio transcription
-    if (this.config.outputAudioTranscription) {
+    // Output audio transcription — only for AUDIO modality (requires audio output)
+    if (isAudioModality && this.config.outputAudioTranscription) {
       config.outputAudioTranscription = {};
     }
 
@@ -121,6 +121,8 @@ export class GeminiLiveSession {
     if (tools.length > 0) {
       config.tools = tools;
     }
+
+    console.log('[GeminiLive] Tools config — googleSearch:', this.config.tools?.googleSearch, '→ tools sent:', JSON.stringify(tools));
 
     return config;
   }
@@ -141,6 +143,7 @@ export class GeminiLiveSession {
     console.log('[GeminiLive] Voice:', this.config.voice);
     console.log('[GeminiLive] Modalities:', this.config.responseModalities);
     console.log('[GeminiLive] Resumption handle:', this.resumptionHandle ? 'yes' : 'no');
+    console.log('[GeminiLive] Full Gemini config:', JSON.stringify(geminiConfig, null, 2));
 
     try {
       this.session = await this.ai.live.connect({
@@ -231,7 +234,12 @@ export class GeminiLiveSession {
 
           // Text data
           if (part.text) {
-            this.callbacks.onTextData?.({ text: part.text });
+            if (part.thought) {
+              // This is a thought/reasoning part, not regular output
+              this.callbacks.onThought?.({ text: part.text });
+            } else {
+              this.callbacks.onTextData?.({ text: part.text });
+            }
           }
 
           // Executable code (from code execution tool)

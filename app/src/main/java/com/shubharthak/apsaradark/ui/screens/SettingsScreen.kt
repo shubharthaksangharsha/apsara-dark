@@ -219,23 +219,12 @@ private fun LiveSettingsPanel(
             palette = palette
         )
 
-        // Voice selector — disabled when modality is TEXT
-        val isAudioModality = liveSettings.responseModality == "AUDIO"
+        // Voice selector
         SettingsDropdown(
-            label = "Voice" + if (!isAudioModality) " (Audio only)" else "",
-            value = if (isAudioModality) liveSettings.voice else "N/A",
+            label = "Voice",
+            value = liveSettings.voice,
             options = LiveSettingsManager.availableVoices,
             onSelect = { liveSettings.updateVoice(it) },
-            palette = palette,
-            enabled = isAudioModality
-        )
-
-        // Response modality
-        SettingsDropdown(
-            label = "Response Modality",
-            value = liveSettings.responseModality,
-            options = listOf("AUDIO", "TEXT"),
-            onSelect = { liveSettings.updateResponseModality(it) },
             palette = palette
         )
 
@@ -248,16 +237,62 @@ private fun LiveSettingsPanel(
             palette = palette
         )
 
-        // System instruction
-        SettingsTextField(
-            label = "System Instruction",
-            value = liveSettings.systemInstruction,
-            onValueChange = { liveSettings.updateSystemInstruction(it) },
-            palette = palette,
-            singleLine = false,
-            maxLines = 4,
-            placeholder = "Custom personality or instructions..."
-        )
+        // System instruction with Clear button
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.surfaceContainer)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "System Instruction",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textTertiary,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                if (liveSettings.systemInstruction.isNotEmpty()) {
+                    Text(
+                        text = "Clear",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.accent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { liveSettings.clearSystemInstruction() }
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Box {
+                if (liveSettings.systemInstruction.isEmpty()) {
+                    Text(
+                        text = "Custom personality or instructions...",
+                        fontSize = 14.sp,
+                        color = palette.textTertiary.copy(alpha = 0.5f)
+                    )
+                }
+                BasicTextField(
+                    value = liveSettings.systemInstruction,
+                    onValueChange = { liveSettings.updateSystemInstruction(it) },
+                    textStyle = TextStyle(
+                        fontSize = 14.sp,
+                        color = palette.textPrimary
+                    ),
+                    cursorBrush = SolidColor(palette.accent),
+                    singleLine = false,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
 
         // Toggles
         SettingsToggle(

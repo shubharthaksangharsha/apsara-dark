@@ -36,10 +36,6 @@ class LiveSettingsManager(context: Context) {
     var systemInstruction by mutableStateOf(prefs.getString("system_instruction", "") ?: "")
         private set
 
-    // Response modality
-    var responseModality by mutableStateOf(prefs.getString("response_modality", "AUDIO") ?: "AUDIO")
-        private set
-
     // Toggles
     var affectiveDialog by mutableStateOf(prefs.getBoolean("affective_dialog", true))
         private set
@@ -67,7 +63,7 @@ class LiveSettingsManager(context: Context) {
     fun updateVoice(v: String) { voice = v; prefs.edit().putString("voice", v).apply() }
     fun updateTemperature(v: Float) { temperature = v; prefs.edit().putFloat("temperature", v).apply() }
     fun updateSystemInstruction(v: String) { systemInstruction = v; prefs.edit().putString("system_instruction", v).apply() }
-    fun updateResponseModality(v: String) { responseModality = v; prefs.edit().putString("response_modality", v).apply() }
+    fun clearSystemInstruction() { systemInstruction = ""; prefs.edit().putString("system_instruction", "").apply() }
     fun updateAffectiveDialog(v: Boolean) { affectiveDialog = v; prefs.edit().putBoolean("affective_dialog", v).apply() }
     fun updateProactiveAudio(v: Boolean) { proactiveAudio = v; prefs.edit().putBoolean("proactive_audio", v).apply() }
     fun updateInputTranscription(v: Boolean) { inputTranscription = v; prefs.edit().putBoolean("input_transcription", v).apply() }
@@ -80,12 +76,9 @@ class LiveSettingsManager(context: Context) {
     fun buildConfigMap(): Map<String, Any?> {
         val config = mutableMapOf<String, Any?>()
         config["model"] = model
-        // Only send voice config for AUDIO modality
-        if (responseModality == "AUDIO") {
-            config["voice"] = voice
-        }
+        config["voice"] = voice
         config["temperature"] = temperature.toDouble()
-        config["responseModalities"] = listOf(responseModality)
+        config["responseModalities"] = listOf("AUDIO")
         config["enableAffectiveDialog"] = affectiveDialog
         config["proactiveAudio"] = proactiveAudio
         config["inputAudioTranscription"] = inputTranscription

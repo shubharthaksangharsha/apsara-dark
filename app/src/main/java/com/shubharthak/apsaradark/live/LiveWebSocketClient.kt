@@ -53,6 +53,9 @@ class LiveWebSocketClient {
     private val _turnComplete = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
     val turnComplete = _turnComplete.asSharedFlow()
 
+    private val _thought = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val thought = _thought.asSharedFlow()
+
     private val _error = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val error = _error.asSharedFlow()
 
@@ -136,6 +139,10 @@ class LiveWebSocketClient {
                 }
                 "turn_complete" -> {
                     _turnComplete.tryEmit(Unit)
+                }
+                "thought" -> {
+                    val t = json.get("text")?.asString ?: return
+                    _thought.tryEmit(t)
                 }
                 "error" -> {
                     val msg = json.get("message")?.asString ?: "Unknown error"

@@ -22,10 +22,9 @@ export const AVAILABLE_MODELS = [
   'gemini-2.5-flash-native-audio-preview-12-2025',
 ];
 
-// Response modality options
+// Response modality — AUDIO only (TEXT not supported by native audio model)
 export const MODALITIES = {
   AUDIO: 'AUDIO',
-  TEXT: 'TEXT',
 };
 
 // Function response scheduling options

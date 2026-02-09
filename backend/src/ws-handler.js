@@ -81,6 +81,9 @@ export function handleWebSocket(ws, apiKey) {
       onTextData: ({ text }) => {
         send({ type: 'text', text });
       },
+      onThought: ({ text }) => {
+        send({ type: 'thought', text });
+      },
       onInputTranscription: ({ text }) => {
         send({ type: 'input_transcription', text });
       },
@@ -140,6 +143,15 @@ export function handleWebSocket(ws, apiKey) {
     switch (msg.type) {
       case 'connect': {
         const sessionConfig = msg.config || {};
+        
+        // Force AUDIO modality — TEXT not supported by native audio model
+        if (sessionConfig.responseModalities) {
+          sessionConfig.responseModalities = ['AUDIO'];
+        }
+        
+        // Log the config received from client
+        console.log('[WS] Client connect config:', JSON.stringify(sessionConfig, null, 2));
+        
         geminiSession = new GeminiLiveSession(apiKey, sessionConfig, createCallbacks());
         const success = await geminiSession.connect();
         if (!success) {

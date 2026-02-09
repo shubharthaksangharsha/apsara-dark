@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.onEach
 data class LiveMessage(
     val role: Role,
     val text: String,
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val thought: String? = null  // Collapsible thought text, if any
 ) {
     enum class Role { USER, APSARA }
 }
@@ -74,6 +75,8 @@ class LiveSessionViewModel(
     private var currentOutputBuffer = StringBuilder()
     // Accumulator for streaming input transcription
     private var currentInputBuffer = StringBuilder()
+    // Accumulator for thoughts (attached to next Apsara message)
+    private var currentThoughtBuffer = StringBuilder()
 
     init {
         // Observe WebSocket state changes
@@ -148,13 +151,19 @@ class LiveSessionViewModel(
             currentOutputBuffer.append(text)
             val fullText = currentOutputBuffer.toString().trim()
             if (fullText.isNotEmpty()) {
+                val thoughtText = currentThoughtBuffer.toString().trim().ifEmpty { null }
                 val lastApsaraIdx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
                 if (lastApsaraIdx >= 0) {
-                    messages[lastApsaraIdx] = LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true)
+                    messages[lastApsaraIdx] = LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true, thought = thoughtText)
                 } else {
-                    messages.add(LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true))
+                    messages.add(LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true, thought = thoughtText))
                 }
             }
+        }.launchIn(viewModelScope)
+
+        // Thoughts — model's reasoning process (accumulate, attach to next Apsara message)
+        wsClient.thought.onEach { text ->
+            currentThoughtBuffer.append(text)
         }.launchIn(viewModelScope)
 
         // Errors
@@ -165,12 +174,14 @@ class LiveSessionViewModel(
     }
 
     private fun finalizeOutputMessage() {
-        // Finalize the current streaming Apsara message
+        // Finalize the current streaming Apsara message and attach any thoughts
         val idx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
         if (idx >= 0) {
-            messages[idx] = messages[idx].copy(isStreaming = false)
+            val thoughtText = currentThoughtBuffer.toString().trim().ifEmpty { null }
+            messages[idx] = messages[idx].copy(isStreaming = false, thought = thoughtText)
         }
         currentOutputBuffer.clear()
+        currentThoughtBuffer.clear()
         outputTranscript = ""
 
         // Also finalize any streaming user message
@@ -195,6 +206,7 @@ class LiveSessionViewModel(
         messages.clear()
         currentInputBuffer.clear()
         currentOutputBuffer.clear()
+        currentThoughtBuffer.clear()
         activeSpeaker = ActiveSpeaker.NONE
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)

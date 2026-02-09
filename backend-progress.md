@@ -201,3 +201,22 @@ backend/src/
 ├── ws-handler.js          — Improved error handling, silent discard of audio/video when disconnected
 └── gemini-live-session.js — Voice config conditional on modality
 ```
+
+---
+
+## v1.2.0 — TEXT Modality Removed, Config Logging, Tools Debugging (Feb 10, 2026)
+
+### What was done
+
+- **TEXT modality removed**: The native audio model (`gemini-2.5-flash-native-audio-preview-12-2025`) does not support TEXT-only modality. Removed `TEXT` from `MODALITIES` constant. `ws-handler.js` now forces `responseModalities: ['AUDIO']` on every connect, regardless of what the client sends.
+- **Config logging**: Backend now logs the full client config JSON on connect (`[WS] Client connect config: { ... }`). Also logs the Gemini config built from it (`[GeminiLive] Full Gemini config: { ... }`), and specifically logs the tools config (`[GeminiLive] Tools config — googleSearch: true/false → tools sent: [...]`).
+- **Thought forwarding**: Already implemented `onThought` callback in `ws-handler.js` to forward `{ type: "thought", text }` messages to the client when model sends thought parts (`part.thought === true`).
+
+### Files changed
+
+```
+backend/src/
+├── config.js              — Removed TEXT from MODALITIES
+├── ws-handler.js          — Config logging on connect, force AUDIO modality
+└── gemini-live-session.js — Tools config logging
+```
