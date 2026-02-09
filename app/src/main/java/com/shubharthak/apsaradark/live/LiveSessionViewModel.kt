@@ -136,6 +136,21 @@ class LiveSessionViewModel(
             activeSpeaker = ActiveSpeaker.APSARA
         }.launchIn(viewModelScope)
 
+        // Track mic input amplitude → set activeSpeaker to USER when voice detected
+        // This makes the visualizer respond immediately to user speech, without
+        // waiting for the backend transcription roundtrip.
+        audioManager.inputAmplitude.onEach { amp ->
+            if (amp > 0.05f && activeSpeaker != ActiveSpeaker.APSARA) {
+                // User is speaking (and Apsara isn't currently outputting audio)
+                activeSpeaker = ActiveSpeaker.USER
+            } else if (amp < 0.02f && activeSpeaker == ActiveSpeaker.USER) {
+                // User stopped speaking — only reset if no audio is playing
+                if (audioManager.outputAmplitude.value < 0.02f) {
+                    activeSpeaker = ActiveSpeaker.NONE
+                }
+            }
+        }.launchIn(viewModelScope)
+
         // On interruption clear playback, user is speaking
         wsClient.interrupted.onEach {
             audioManager.clearPlaybackQueue()

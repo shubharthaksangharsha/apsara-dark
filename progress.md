@@ -256,7 +256,7 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── live/LiveSessionViewModel.kt      — Conversation tracking, streaming state, async output
 ├── live/LiveWebSocketClient.kt       — WebSocket flows for transcription events
 ├── live/LiveAudioManager.kt          — PCM audio record/playback
-└── data/LiveSettingsManager.kt       — Persistent live settings
+├── data/LiveSettingsManager.kt       — Persistent live settings
 
 backend/src/
 ├── ws-handler.js                     — Improved error handling
@@ -406,4 +406,71 @@ app/src/main/
 │   └── ui/
 │       ├── components/BottomInputBar.kt           — Dropdown offset fix
 │       └── screens/HomeScreen.kt                  — ApsaraBubble with embedded tool calls, ToolCallCard, removed Bolt/Build icons
+```
+
+---
+
+## v2.6.0 — Amplitude-Driven Visualizer (Feb 9, 2026)
+
+### What was done
+
+- **Real audio amplitude visualizer**: The mini visualizer in the bottom input bar (inside the End button during live mode) now responds to **actual audio levels** instead of using a constant sine wave animation.
+  
+- **User input amplitude**: `LiveAudioManager` computes RMS (Root Mean Square) amplitude from mic PCM data in real-time. When you speak louder, the bars move more; when you're quiet, they stay small.
+
+- **Apsara output amplitude**: `LiveAudioManager` also computes RMS from the playback queue audio data. When Apsara speaks, the bars animate proportionally to her audio volume.
+
+- **Smooth decay**: When no audio is playing, the output amplitude smoothly decays to zero (exponential moving average) rather than snapping to flat.
+
+- **Amplitude exposed as StateFlows**: `inputAmplitude` and `outputAmplitude` (both `StateFlow<Float>`, range 0.0–1.0) are exposed from `LiveAudioManager`, collected in `HomeScreen`, and passed through `BottomInputBar` → `LiveModeBar` → `MiniVisualizer`.
+
+- **Organic variation preserved**: The visualizer still uses phase-offset sine waves for per-bar variation, but the sine amplitude is now **scaled by the real audio amplitude**. This gives natural-looking organic movement proportional to actual voice volume.
+
+- **Muted state**: Input amplitude is still computed when muted (so the visualizer could show it), but audio data is not sent to the backend.
+
+### How it works
+
+1. `LiveAudioManager.startRecording()` — every PCM chunk read from mic → `computeAmplitude()` → `smoothAmplitude()` → `_inputAmplitude` StateFlow
+2. `LiveAudioManager.startPlayback()` — every PCM chunk dequeued for playback → `computeAmplitude()` → `smoothAmplitude()` → `_outputAmplitude` StateFlow; decays to 0 when queue is empty
+3. `MiniVisualizer` receives `amplitude: Float` (switched by `activeSpeaker` — input for USER, output for APSARA)
+4. Bar heights = `minHeight + amplitude * (maxHeight - minHeight) * (0.4 + 0.6 * sineVariation)`
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── live/LiveAudioManager.kt          — computeAmplitude(), smoothAmplitude(), inputAmplitude/outputAmplitude StateFlows
+├── ui/components/BottomInputBar.kt   — MiniVisualizer now amplitude-driven, new inputAmplitude/outputAmplitude params
+└── ui/screens/HomeScreen.kt          — Passes amplitude StateFlows to BottomInputBar
+```
+
+---
+
+## v2.6.1 — Visualizer Fix: User Speech Detection & Amplitude Boost (Feb 9, 2026)
+
+### What was done
+
+- **Fixed: User speech not moving the visualizer bars**
+  - **Root cause**: `activeSpeaker` was only set to `USER` when a `input_transcription` WebSocket message arrived from the backend. This has a significant roundtrip delay (user speaks → audio sent to backend → backend sends to Gemini → Gemini transcribes → transcription sent back). During that delay, `activeSpeaker` was `NONE`, so the visualizer was showing `amplitude = 0f`.
+  - **Fix**: Added an `inputAmplitude` observer in `LiveSessionViewModel` that sets `activeSpeaker = USER` immediately when mic amplitude exceeds 0.05 (voice detected locally), without waiting for the backend transcription. Resets to `NONE` when amplitude drops below 0.02 and Apsara isn't playing audio.
+  - Apsara's audio data events still correctly override to `APSARA` when she speaks.
+
+- **Boosted amplitude sensitivity**
+  - Reduced RMS normalization divisor from 12000 → 4000. `VOICE_COMMUNICATION` audio source outputs quieter PCM than raw mic due to AEC preprocessing — the old divisor was too high, making speech barely register.
+  - Added `sqrt()` curve on top of normalization — this boosts quieter speech so even soft talking is visible in the visualizer.
+  - Increased smoothing factor from 0.3 → 0.45 for faster bar response.
+
+- **More dramatic bar movement**
+  - Increased `maxHeight` from 0.85 → 0.95 of canvas height (bars go taller).
+  - Reduced `minHeight` from 0.15 → 0.12 (bars go shorter when idle).
+  - Applied 1.5x amplitude boost in the visualizer formula so bars react more visibly.
+  - Changed variation mix from `0.4 + 0.6 * variation` → `0.3 + 0.7 * variation` for more per-bar contrast.
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── live/LiveAudioManager.kt          — Amplitude: lower divisor (4000), sqrt curve, faster smoothing (0.45)
+├── live/LiveSessionViewModel.kt      — inputAmplitude observer for instant USER detection
+└── ui/components/BottomInputBar.kt   — Boosted visualizer scaling (1.5x, taller bars, more variation)
 ```

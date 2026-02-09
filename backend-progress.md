@@ -264,3 +264,53 @@ backend/src/
 ├── ws-handler.js          — Per-tool async/sync partitioning, tool_call/tool_results events
 └── gemini-live-session.js — Per-tool NON_BLOCKING in _buildGeminiConfig()
 ```
+
+---
+
+## v1.5.0 — Tool System Planning (Feb 9, 2026)
+
+### Planning: Utility Plugin Box
+
+**Goal**: Create a comprehensive set of tools that provide Android device capabilities, laptop (Linux) control, and server utilities — all manageable from the Plugins screen with per-tool on/off and sync/async toggles.
+
+**Architecture decisions (pending):**
+
+1. **Phone tools**: Backend forwards `tool_call` to Android app via WebSocket instead of auto-executing. App handles phone-specific tools (screenshot, battery, clipboard, etc.) and sends `tool_response` back.
+
+2. **Laptop tools**: Two options being evaluated:
+   - **Option A**: Small Node.js agent on laptop connects to backend via WebSocket (real-time, bidirectional)
+   - **Option B**: Backend SSHs into laptop for command execution (simpler setup)
+
+3. **Server tools**: Already executing on backend (e.g., `get_server_info`). New server tools like `web_fetch` run directly on the Oracle Cloud backend.
+
+**Proposed tool list:**
+
+| Tool | Tier | Execution | Description |
+|------|------|-----------|-------------|
+| `take_screenshot_phone` | 1 | Phone | MediaProjection screenshot → Gemini vision |
+| `take_screenshot_laptop` | 1 | Laptop | scrot/gnome-screenshot via SSH/agent |
+| `get_phone_battery` | 1 | Phone | Battery level, charging status |
+| `get_phone_info` | 1 | Phone | Device model, Android version, storage, RAM |
+| `get_laptop_info` | 1 | Laptop | CPU, RAM, disk, uptime via SSH |
+| `send_clipboard` | 1 | Phone | Get/set clipboard text |
+| `web_fetch` | 1 | Server | Fetch URL content (articles, APIs) |
+| `run_shell_command` | 2 | Laptop | Execute shell commands (with safeguards) |
+| `open_app` | 2 | Phone | Launch apps by name/package |
+| `toggle_flashlight` | 2 | Phone | Flashlight on/off |
+| `control_media` | 2 | Laptop | Play/pause/next via playerctl |
+| `get_running_processes` | 2 | Laptop | Top processes by CPU/memory |
+
+### Files to be changed (when implemented)
+
+```
+backend/src/
+├── tools.js               — New tool declarations + handlers
+├── ws-handler.js          — Phone tool forwarding logic
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── live/LiveWebSocketClient.kt  — Handle phone tool requests from backend
+├── live/LiveSessionViewModel.kt — Phone tool execution (screenshot, battery, etc.)
+├── data/LiveSettingsManager.kt  — Per-tool toggles for new tools
+├── data/MockData.kt             — Plugin cards for new tools
+└── ui/screens/PluginsScreen.kt  — UI for new tool toggles
+```

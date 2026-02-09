@@ -50,6 +50,8 @@ class LiveAudioManager(private val context: Context) {
         private const val CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO
         private const val CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
         private const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
+        // Amplitude smoothing factor (0..1, higher = faster response)
+        private const val AMPLITUDE_SMOOTHING = 0.45f
     }
 
     private val _isRecording = MutableStateFlow(false)
@@ -61,6 +63,13 @@ class LiveAudioManager(private val context: Context) {
     // Current audio output device
     private val _audioOutputDevice = MutableStateFlow(AudioOutputDevice.LOUDSPEAKER)
     val audioOutputDevice: StateFlow<AudioOutputDevice> = _audioOutputDevice.asStateFlow()
+
+    // Audio amplitude levels (0.0 .. 1.0) for visualizer
+    private val _inputAmplitude = MutableStateFlow(0f)
+    val inputAmplitude: StateFlow<Float> = _inputAmplitude.asStateFlow()
+
+    private val _outputAmplitude = MutableStateFlow(0f)
+    val outputAmplitude: StateFlow<Float> = _outputAmplitude.asStateFlow()
 
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
@@ -253,10 +262,18 @@ class LiveAudioManager(private val context: Context) {
             val buffer = ByteArray(bufferSize)
             while (isActive && _isRecording.value) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
-                if (read > 0 && !_isMuted.value) {
-                    onAudioChunk?.invoke(buffer.copyOf(read))
+                if (read > 0) {
+                    // Always compute input amplitude for visualizer (even when muted)
+                    val amplitude = computeAmplitude(buffer, read)
+                    _inputAmplitude.value = smoothAmplitude(_inputAmplitude.value, amplitude)
+
+                    if (!_isMuted.value) {
+                        onAudioChunk?.invoke(buffer.copyOf(read))
+                    }
                 }
             }
+            // Reset amplitude when recording stops
+            _inputAmplitude.value = 0f
         }
 
         Log.d(TAG, "Recording started (AEC mode, output=${_audioOutputDevice.value})")
@@ -264,6 +281,7 @@ class LiveAudioManager(private val context: Context) {
 
     fun stopRecording() {
         _isRecording.value = false
+        _inputAmplitude.value = 0f
         recordJob?.cancel()
         recordJob = null
 
@@ -342,8 +360,17 @@ class LiveAudioManager(private val context: Context) {
             while (isActive) {
                 val chunk = playbackQueue.poll()
                 if (chunk != null) {
+                    // Update output amplitude level from audio data
+                    val amplitude = computeAmplitude(chunk, chunk.size)
+                    _outputAmplitude.value = smoothAmplitude(_outputAmplitude.value, amplitude)
                     audioTrack?.write(chunk, 0, chunk.size)
                 } else {
+                    // Decay output amplitude toward zero when no audio is playing
+                    if (_outputAmplitude.value > 0.01f) {
+                        _outputAmplitude.value = smoothAmplitude(_outputAmplitude.value, 0f)
+                    } else {
+                        _outputAmplitude.value = 0f
+                    }
                     delay(10)
                 }
             }
@@ -373,6 +400,7 @@ class LiveAudioManager(private val context: Context) {
         playbackJob?.cancel()
         playbackJob = null
         playbackQueue.clear()
+        _outputAmplitude.value = 0f
         try {
             audioTrack?.stop()
             audioTrack?.release()
@@ -389,11 +417,41 @@ class LiveAudioManager(private val context: Context) {
     /** Clear playback queue (on interruption) */
     fun clearPlaybackQueue() {
         playbackQueue.clear()
+        _outputAmplitude.value = 0f
     }
 
     fun release() {
         stopRecording()
         stopPlayback()
         scope.cancel()
+    }
+
+    /**
+     * Compute RMS amplitude from PCM 16-bit audio bytes, returns 0.0..1.0
+     */
+    private fun computeAmplitude(pcmBytes: ByteArray, length: Int): Float {
+        if (length < 2) return 0f
+        val samples = length / 2
+        var sumSquares = 0.0
+        for (i in 0 until samples) {
+            val low = pcmBytes[i * 2].toInt() and 0xFF
+            val high = pcmBytes[i * 2 + 1].toInt()
+            val sample = (high shl 8) or low
+            sumSquares += sample.toDouble() * sample.toDouble()
+        }
+        val rms = kotlin.math.sqrt(sumSquares / samples)
+        // Normalize: VOICE_COMMUNICATION source outputs quieter PCM than raw mic.
+        // Typical speech RMS is ~500-4000 through AEC pipeline.
+        // Use a lower divisor so normal speech maps to ~0.5-1.0 range.
+        val normalized = (rms / 4000.0).coerceIn(0.0, 1.0).toFloat()
+        // Apply a sqrt curve to boost quieter speech and make it more visible
+        return kotlin.math.sqrt(normalized.toDouble()).toFloat()
+    }
+
+    /**
+     * Smoothly update amplitude with exponential moving average
+     */
+    private fun smoothAmplitude(current: Float, target: Float): Float {
+        return current + AMPLITUDE_SMOOTHING * (target - current)
     }
 }

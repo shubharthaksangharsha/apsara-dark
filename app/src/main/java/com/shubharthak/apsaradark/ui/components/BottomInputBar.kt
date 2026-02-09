@@ -57,6 +57,8 @@ fun BottomInputBar(
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
     activeSpeaker: ActiveSpeaker = ActiveSpeaker.NONE,
+    inputAmplitude: Float = 0f,
+    outputAmplitude: Float = 0f,
     currentAudioDevice: AudioOutputDevice = AudioOutputDevice.LOUDSPEAKER,
     onAudioDeviceChange: (AudioOutputDevice) -> Unit = {},
     hasBluetooth: Boolean = false,
@@ -78,6 +80,8 @@ fun BottomInputBar(
                 liveState = liveState,
                 isMuted = isMuted,
                 activeSpeaker = activeSpeaker,
+                inputAmplitude = inputAmplitude,
+                outputAmplitude = outputAmplitude,
                 currentAudioDevice = currentAudioDevice,
                 onAudioDeviceChange = onAudioDeviceChange,
                 hasBluetooth = hasBluetooth,
@@ -248,6 +252,8 @@ private fun LiveModeBar(
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
     activeSpeaker: ActiveSpeaker,
+    inputAmplitude: Float,
+    outputAmplitude: Float,
     currentAudioDevice: AudioOutputDevice,
     onAudioDeviceChange: (AudioOutputDevice) -> Unit,
     hasBluetooth: Boolean,
@@ -460,6 +466,11 @@ private fun LiveModeBar(
             MiniVisualizer(
                 activeSpeaker = activeSpeaker,
                 isConnecting = liveState == LiveSessionViewModel.LiveState.CONNECTING,
+                amplitude = when (activeSpeaker) {
+                    ActiveSpeaker.APSARA -> outputAmplitude
+                    ActiveSpeaker.USER -> inputAmplitude
+                    ActiveSpeaker.NONE -> 0f
+                },
                 accentColor = palette.surface,
                 apsaraColor = palette.surface,
                 userColor = palette.surface.copy(alpha = 0.6f),
@@ -476,46 +487,54 @@ private fun LiveModeBar(
     }
 }
 
-// ─── Mini Visualizer — animated bars that change color by speaker ────────────
+// ─── Mini Visualizer — amplitude-driven bars that respond to actual audio ────
 
 @Composable
 private fun MiniVisualizer(
     activeSpeaker: ActiveSpeaker,
     isConnecting: Boolean,
+    amplitude: Float, // 0.0..1.0 from real audio RMS
     accentColor: Color,
     apsaraColor: Color,
     userColor: Color,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "vizBars")
-    
-    // 3 bars with different phase offsets
-    val bar1 by infiniteTransition.animateFloat(
+
+    // Phase offsets for organic movement — these keep the bars from moving in lockstep
+    val phase1 by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 6.2832f, // 2π
+        targetValue = 6.2832f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "bar1"
+        label = "phase1"
     )
-    val bar2 by infiniteTransition.animateFloat(
+    val phase2 by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 6.2832f,
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "bar2"
+        label = "phase2"
     )
-    val bar3 by infiniteTransition.animateFloat(
+    val phase3 by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 6.2832f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "bar3"
+        label = "phase3"
+    )
+
+    // Smoothly animate the amplitude for visual smoothness
+    val animatedAmplitude by animateFloatAsState(
+        targetValue = amplitude,
+        animationSpec = tween(durationMillis = 80, easing = LinearEasing),
+        label = "amplitude"
     )
 
     val isActive = activeSpeaker != ActiveSpeaker.NONE && !isConnecting
@@ -528,18 +547,22 @@ private fun MiniVisualizer(
     Canvas(modifier = modifier) {
         val barWidth = size.width / 5f
         val gap = barWidth * 0.5f
-        val maxHeight = size.height * 0.85f
-        val minHeight = size.height * 0.2f
+        val maxHeight = size.height * 0.95f
+        val minHeight = size.height * 0.12f
         val centerY = size.height / 2f
 
-        val bars = listOf(bar1, bar2, bar3)
+        val phases = listOf(phase1, phase2, phase3)
         val totalBarsWidth = 3 * barWidth + 2 * gap
         val startX = (size.width - totalBarsWidth) / 2f
 
-        bars.forEachIndexed { i, phase ->
-            val height = if (isActive) {
-                val normalized = (sin(phase + i * 1.2f) + 1f) / 2f // 0..1
-                minHeight + normalized * (maxHeight - minHeight)
+        phases.forEachIndexed { i, phase ->
+            val height = if (isActive && animatedAmplitude > 0.01f) {
+                // Amplitude drives the height, phase offset adds organic variation
+                val variation = (sin(phase + i * 1.5f) + 1f) / 2f // 0..1
+                // Boost amplitude: apply power curve to make movement more dramatic
+                val boosted = (animatedAmplitude * 1.5f).coerceIn(0f, 1f)
+                // Mix: amplitude controls overall scale, variation adds per-bar movement
+                minHeight + boosted * (maxHeight - minHeight) * (0.3f + 0.7f * variation)
             } else {
                 minHeight
             }
