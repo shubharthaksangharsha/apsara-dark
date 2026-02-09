@@ -72,7 +72,8 @@ export class GeminiLiveSession {
     }
 
     // Session resumption
-    if (this.config.sessionResumption !== undefined) {
+    // Session resumption — only if explicitly enabled (non-null, non-undefined object)
+    if (this.config.sessionResumption && typeof this.config.sessionResumption === 'object') {
       config.sessionResumption = this.config.sessionResumption;
       // If we have a resumption handle from a previous connection, use it
       if (this.resumptionHandle) {

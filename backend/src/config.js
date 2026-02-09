@@ -61,8 +61,8 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
     slidingWindow: {},
   },
 
-  // Enable session resumption for auto-reconnect
-  sessionResumption: {},
+  // Enable session resumption for auto-reconnect (can be disabled by client)
+  sessionResumption: null,
 
   // Enable affective dialog (emotion-aware responses)
   enableAffectiveDialog: true,

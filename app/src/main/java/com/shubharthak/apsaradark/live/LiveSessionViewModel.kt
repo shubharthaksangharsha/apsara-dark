@@ -95,6 +95,10 @@ class LiveSessionViewModel(
     var sessionResumed by mutableStateOf(false)
         private set
 
+    // Track if we've been connected before in this live session (for detecting reconnections)
+    private var hasBeenConnected = false
+    private var hasResumptionHandle = false
+
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
     // Accumulator for streaming input transcription
@@ -118,6 +122,18 @@ class LiveSessionViewModel(
 
             // When Gemini Live is connected, start recording + playback
             if (wsState == LiveWebSocketClient.ConnectionState.LIVE_CONNECTED) {
+                // Detect reconnection (connected again after being connected before)
+                if (hasBeenConnected && hasResumptionHandle) {
+                    sessionResumed = true
+                    messages.add(
+                        LiveMessage(
+                            role = LiveMessage.Role.APSARA,
+                            text = "⟳ Session resumed — continuing from where we left off",
+                            isStreaming = false
+                        )
+                    )
+                }
+                hasBeenConnected = true
                 startAudio()
             }
 
@@ -308,17 +324,21 @@ class LiveSessionViewModel(
         // Session resumption updates — Gemini is maintaining session state across connections
         wsClient.sessionResumptionUpdate.onEach { event ->
             Log.d(TAG, "Session resumption: resumable=${event.resumable}, hasHandle=${event.hasHandle}")
-            if (event.resumable && event.hasHandle && !sessionResumed) {
-                sessionResumed = true
-                // Add a system-like indicator in chat so user knows session was resumed
-                messages.add(
-                    LiveMessage(
-                        role = LiveMessage.Role.APSARA,
-                        text = "⟳ Session resumed — continuing from where we left off",
-                        isStreaming = false
-                    )
-                )
+            if (event.resumable && event.hasHandle) {
+                hasResumptionHandle = true
             }
+        }.launchIn(viewModelScope)
+
+        // GoAway — Gemini connection will terminate soon, backend will auto-reconnect
+        wsClient.goAway.onEach { event ->
+            Log.w(TAG, "GoAway received: timeLeft=${event.timeLeft}")
+            messages.add(
+                LiveMessage(
+                    role = LiveMessage.Role.APSARA,
+                    text = "⏳ Connection refreshing — reconnecting seamlessly…",
+                    isStreaming = false
+                )
+            )
         }.launchIn(viewModelScope)
     }
 
@@ -364,6 +384,8 @@ class LiveSessionViewModel(
         pendingToolCalls.clear()
         activeSpeaker = ActiveSpeaker.NONE
         sessionResumed = false
+        hasBeenConnected = false
+        hasResumptionHandle = false
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
     }

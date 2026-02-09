@@ -74,6 +74,11 @@ class LiveWebSocketClient {
     private val _sessionResumptionUpdate = MutableSharedFlow<SessionResumptionEvent>(extraBufferCapacity = 16)
     val sessionResumptionUpdate = _sessionResumptionUpdate.asSharedFlow()
 
+    // GoAway — server connection will terminate soon
+    data class GoAwayEvent(val timeLeft: String)
+    private val _goAway = MutableSharedFlow<GoAwayEvent>(extraBufferCapacity = 4)
+    val goAway = _goAway.asSharedFlow()
+
     /**
      * Connect WebSocket and immediately send "connect" with the live config.
      */
@@ -202,6 +207,11 @@ class LiveWebSocketClient {
                     val hasHandle = json.get("hasHandle")?.asBoolean ?: false
                     Log.d(TAG, "Session resumption update: resumable=$resumable, hasHandle=$hasHandle")
                     _sessionResumptionUpdate.tryEmit(SessionResumptionEvent(resumable, hasHandle))
+                }
+                "go_away" -> {
+                    val timeLeft = json.get("timeLeft")?.asString ?: "unknown"
+                    Log.w(TAG, "GoAway received: timeLeft=$timeLeft")
+                    _goAway.tryEmit(GoAwayEvent(timeLeft))
                 }
             }
         } catch (e: Exception) {

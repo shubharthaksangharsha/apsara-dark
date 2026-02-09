@@ -52,6 +52,9 @@ class LiveSettingsManager(context: Context) {
     var contextCompression by mutableStateOf(prefs.getBoolean("context_compression", true))
         private set
 
+    var sessionResumption by mutableStateOf(prefs.getBoolean("session_resumption", true))
+        private set
+
     var googleSearch by mutableStateOf(prefs.getBoolean("google_search", true))
         private set
 
@@ -82,6 +85,7 @@ class LiveSettingsManager(context: Context) {
     fun updateInputTranscription(v: Boolean) { inputTranscription = v; prefs.edit().putBoolean("input_transcription", v).apply() }
     fun updateOutputTranscription(v: Boolean) { outputTranscription = v; prefs.edit().putBoolean("output_transcription", v).apply() }
     fun updateContextCompression(v: Boolean) { contextCompression = v; prefs.edit().putBoolean("context_compression", v).apply() }
+    fun updateSessionResumption(v: Boolean) { sessionResumption = v; prefs.edit().putBoolean("session_resumption", v).apply() }
     fun updateGoogleSearch(v: Boolean) { googleSearch = v; prefs.edit().putBoolean("google_search", v).apply() }
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
     fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
@@ -104,6 +108,9 @@ class LiveSettingsManager(context: Context) {
         }
         if (contextCompression) {
             config["contextWindowCompression"] = mapOf("slidingWindow" to emptyMap<String, Any>())
+        }
+        if (sessionResumption) {
+            config["sessionResumption"] = emptyMap<String, Any>()
         }
         config["tools"] = mapOf(
             "googleSearch" to googleSearch,

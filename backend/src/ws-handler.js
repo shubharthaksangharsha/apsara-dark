@@ -64,8 +64,8 @@ export function handleWebSocket(ws, apiKey) {
       },
       onDisconnected: ({ reason }) => {
         send({ type: 'disconnected', reason });
-        // Try auto-reconnect with session resumption
-        if (geminiSession && geminiSession.resumptionHandle) {
+        // Try auto-reconnect with session resumption (only if enabled)
+        if (geminiSession && geminiSession.resumptionHandle && geminiSession.config.sessionResumption) {
           console.log('[WS] Auto-reconnecting with session resumption...');
           setTimeout(() => {
             geminiSession?.reconnect().then(success => {

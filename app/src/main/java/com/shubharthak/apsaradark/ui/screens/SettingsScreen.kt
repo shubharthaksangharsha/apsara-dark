@@ -371,9 +371,17 @@ private fun LiveSettingsPanel(
 
         SettingsToggle(
             label = "Context Compression",
-            description = "Sliding window for long sessions",
+            description = "Unlimited session length via sliding window",
             checked = liveSettings.contextCompression,
             onCheckedChange = { liveSettings.updateContextCompression(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Session Resumption",
+            description = "Auto-reconnect without losing context",
+            checked = liveSettings.sessionResumption,
+            onCheckedChange = { liveSettings.updateSessionResumption(it) },
             palette = palette
         )
 

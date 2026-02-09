@@ -565,3 +565,68 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── ui/screens/HomeScreen.kt                           — Transcript-synced haptic feedback (LaunchedEffect on outputTranscript)
 └── ui/screens/SettingsScreen.kt                       — General Settings section, Haptic Feedback toggle with note
 ```
+
+---
+
+## v2.9.0 — Session Resumption & Context Compression Controls, GoAway Indicator (Feb 9, 2026)
+
+### What was done
+
+- **Session Resumption toggle** in Live Settings:
+  - Added `sessionResumption` boolean to `LiveSettingsManager` (default: `true`), persisted via SharedPreferences.
+  - When enabled, sends `sessionResumption: {}` in the connect config — Gemini will provide resumption handles for auto-reconnect.
+  - When disabled, no resumption config is sent — sessions will terminate on disconnect.
+  - Updated backend: `DEFAULT_SESSION_CONFIG.sessionResumption` changed from `{}` to `null` (off by default, controlled by client toggle).
+  - Backend `_buildGeminiConfig()` now checks `typeof === 'object'` to distinguish enabled (`{}`) from disabled (`null`).
+  - Auto-reconnect in `ws-handler.js` only triggers if session resumption was enabled in the config.
+
+- **Session Resumed indicator** — improved logic:
+  - No longer triggers on first handle update (which is normal for every session).
+  - Now detects actual reconnections: tracks `hasBeenConnected` and `hasResumptionHandle` — only shows "⟳ Session resumed — continuing from where we left off" when a second `LIVE_CONNECTED` event fires after the first, meaning a disconnect + reconnect happened mid-session.
+
+- **GoAway message handling**:
+  - Added `GoAwayEvent` data class and `goAway` SharedFlow to `LiveWebSocketClient`.
+  - Parses `go_away` messages from backend (sent when Gemini's connection is about to terminate).
+  - `LiveSessionViewModel` observes GoAway events and adds a system message: "⏳ Connection refreshing — reconnecting seamlessly…" so the user knows what's happening.
+
+- **Updated toggle descriptions**:
+  - Context Compression: "Unlimited session length via sliding window"
+  - Session Resumption: "Auto-reconnect without losing context"
+
+### How the three features interact
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  You start talking to Apsara...                                 │
+│                                                                 │
+│  Context Compression ON → session can go beyond 15 min          │
+│  Session Resumption ON → handles stored for reconnection        │
+│                                                                 │
+│  At ~10 min: Gemini sends GoAway                                │
+│    → App shows "⏳ Connection refreshing..."                     │
+│    → Backend auto-reconnects with stored handle                 │
+│    → App shows "⟳ Session resumed"                              │
+│    → Conversation continues seamlessly                          │
+│                                                                 │
+│  Without Session Resumption:                                    │
+│    → GoAway → disconnect → session lost → user must restart     │
+│                                                                 │
+│  Without Context Compression:                                   │
+│    → Hard 15-min limit → session terminates even with resumption│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Files changed
+
+```
+backend/src/
+├── config.js                         — sessionResumption default changed to null
+├── gemini-live-session.js            — Stricter sessionResumption check (typeof === 'object')
+└── ws-handler.js                     — Auto-reconnect gated on sessionResumption config
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/LiveSettingsManager.kt       — sessionResumption toggle + sent in buildConfigMap()
+├── live/LiveWebSocketClient.kt       — GoAwayEvent, goAway flow, go_away handler
+├── live/LiveSessionViewModel.kt      — GoAway observer, improved reconnection detection
+└── ui/screens/SettingsScreen.kt      — Session Resumption toggle, updated descriptions
+```
