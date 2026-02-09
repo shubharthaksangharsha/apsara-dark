@@ -44,6 +44,19 @@ com.shubharthak.apsaradark
         └── Type.kt
 ```
 
+---
+
+## v0.1.1 — Logo Integration (Feb 9, 2026)
+
+### What was done
+
+- **Launcher icon**: Generated `apsara_logo.png` into all Android mipmap densities (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi).
+- **Adaptive icon**: Foreground uses the real Apsara logo; background is dark (`#0D0D0D`).
+- **Round icon**: Same logo, clipped by system circle mask.
+- Removed the old placeholder vector drawable.
+
+---
+
 ### Next steps
 
 - Wire up Gemini Live API for the Talk feature.
