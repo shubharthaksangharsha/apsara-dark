@@ -583,7 +583,7 @@ private fun UserBubble(
     }
 }
 
-// ─── Apsara output — plain text, no bubble, collapsible thoughts ────────────
+// ─── Apsara output — plain text while streaming, markdown after idle ────────
 
 @Composable
 private fun ApsaraBubble(
@@ -594,6 +594,23 @@ private fun ApsaraBubble(
     palette: ApsaraColorPalette
 ) {
     var thoughtsExpanded by remember { mutableStateOf(false) }
+
+    // Deferred markdown: plain text while streaming, formatted after 1s idle
+    var formattedText by remember { mutableStateOf<androidx.compose.ui.text.AnnotatedString?>(null) }
+    var lastTextSnapshot by remember { mutableStateOf("") }
+
+    LaunchedEffect(text, isStreaming) {
+        if (isStreaming) {
+            // While streaming, always show plain text — no markdown overhead
+            formattedText = null
+        } else if (text != lastTextSnapshot) {
+            // Streaming just stopped or text finalized — wait 1s then format
+            formattedText = null
+            lastTextSnapshot = text
+            kotlinx.coroutines.delay(1000L)
+            formattedText = parseMarkdown(text, palette)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -652,15 +669,26 @@ private fun ApsaraBubble(
             }
         }
 
-        // Main text — rendered as markdown, no bubble
+        // Main text — plain during streaming, markdown after 1s idle
         if (text.isNotBlank()) {
-            Text(
-                text = parseMarkdown(text, palette),
-                fontSize = 15.sp,
-                color = palette.textPrimary,
-                lineHeight = 22.sp,
-                modifier = Modifier.fillMaxWidth()
-            )
+            val displayText = formattedText
+            if (displayText != null) {
+                Text(
+                    text = displayText,
+                    fontSize = 15.sp,
+                    color = palette.textPrimary,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Text(
+                    text = text,
+                    fontSize = 15.sp,
+                    color = palette.textPrimary,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
