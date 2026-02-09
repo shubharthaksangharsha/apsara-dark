@@ -1,27 +1,15 @@
 package com.shubharthak.apsaradark.ui.screens
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.shubharthak.apsaradark.R
 import com.shubharthak.apsaradark.data.MockData
 import com.shubharthak.apsaradark.ui.components.*
 import com.shubharthak.apsaradark.ui.theme.*
@@ -70,46 +58,8 @@ fun HomeScreen() {
         Scaffold(
             containerColor = palette.surface,
             topBar = {
-                val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
-                val shimmerOffset by infiniteTransition.animateFloat(
-                    initialValue = -200f,
-                    targetValue = 600f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(2400, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "shimmerOffset"
-                )
-                val shimmerBrush = Brush.linearGradient(
-                    colors = listOf(
-                        palette.textPrimary,
-                        palette.accent,
-                        palette.textPrimary
-                    ),
-                    start = Offset(shimmerOffset, 0f),
-                    end = Offset(shimmerOffset + 200f, 0f)
-                )
-
                 TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(id = R.drawable.apsara_logo),
-                                contentDescription = "Apsara Logo",
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Apsara Dark",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                style = TextStyle(brush = shimmerBrush),
-                                letterSpacing = 0.2.sp
-                            )
-                        }
-                    },
+                    title = { },
                     navigationIcon = {
                         IconButton(onClick = {
                             scope.launch { drawerState.open() }
@@ -123,8 +73,7 @@ fun HomeScreen() {
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = palette.surface,
-                        titleContentColor = palette.textPrimary
+                        containerColor = palette.surface
                     )
                 )
             },
@@ -138,67 +87,52 @@ fun HomeScreen() {
                 )
             }
         ) { paddingValues ->
-            LazyColumn(
+            // Center content vertically
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues),
-                contentPadding = PaddingValues(bottom = 8.dp)
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
+                // Headline
+                Text(
+                    text = "Apsara is here for you!",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary,
+                    letterSpacing = (-0.2).sp
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Feature grid — 2x2
+                Column(
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "Good evening,",
-                            fontSize = 14.sp,
-                            color = palette.textTertiary,
-                            letterSpacing = 0.3.sp
-                        )
-                        Text(
-                            text = "Shubharthak",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = palette.textPrimary,
-                            letterSpacing = (-0.3).sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-
-                item {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            MockData.mainFeatures.take(2).forEach { feature ->
-                                FeatureCard(
-                                    feature = feature,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            MockData.mainFeatures.drop(2).forEach { feature ->
-                                FeatureCard(
-                                    feature = feature,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
+                        MockData.mainFeatures.take(2).forEach { feature ->
+                            FeatureCard(
+                                feature = feature,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(28.dp))
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MockData.mainFeatures.drop(2).forEach { feature ->
+                            FeatureCard(
+                                feature = feature,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             }
         }

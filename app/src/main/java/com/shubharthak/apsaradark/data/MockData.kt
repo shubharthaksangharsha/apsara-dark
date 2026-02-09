@@ -10,8 +10,7 @@ data class DrawerItem(
 )
 
 data class MainFeature(
-    val title: String,
-    val icon: ImageVector
+    val title: String
 )
 
 object MockData {
@@ -24,9 +23,9 @@ object MockData {
     )
 
     val mainFeatures = listOf(
-        MainFeature("Talk", Icons.Outlined.Mic),
-        MainFeature("Design", Icons.Outlined.Palette),
-        MainFeature("Control", Icons.Outlined.Tune),
-        MainFeature("Reminders", Icons.Outlined.NotificationsActive),
+        MainFeature("Talk"),
+        MainFeature("Design"),
+        MainFeature("Control"),
+        MainFeature("Reminders"),
     )
 }

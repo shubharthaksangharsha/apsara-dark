@@ -84,6 +84,27 @@ com.shubharthak.apsaradark
 
 ---
 
+## v1.0.2 — UI Polish & Layout Refinements (Feb 9, 2026)
+
+### What was done
+
+- **Home screen redesigned**:
+  - Removed greeting ("Good evening, Shubharthak") — replaced with centered "Apsara is here for you!" tagline.
+  - Removed Apsara logo and animated title from top bar — just a clean hamburger icon now.
+  - Feature grid (Talk, Design, Control, Reminders) — minimal text-only chips, no icons, 2×2 centered grid.
+- **Drawer updated**:
+  - Apsara logo moved to top of drawer (above menu items).
+  - Clean layout: logo → My Canvas, My Plugins, Laptop Control, Settings.
+- **Bottom input bar polish**:
+  - Placeholder changed to "Ask Apsara".
+  - Input bar raised higher from the bottom edge for better thumb reach.
+  - Added spacing between mic and live icons for cleaner look.
+  - Separate `+` attach button on the left, input box curves fully to the right.
+- **Settings themes**: Expandable/collapsible grid layout, theme names only (no color dots, no previews, no icons).
+- **Feature cards**: Stripped to just names — no icons, no subtitles. Minimal pill-style chips.
+
+---
+
 ### Next steps
 
 - Wire up Gemini Live API for the Talk feature.

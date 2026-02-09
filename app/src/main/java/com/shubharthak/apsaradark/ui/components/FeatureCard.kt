@@ -1,14 +1,14 @@
 package com.shubharthak.apsaradark.ui.components
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.data.MainFeature
@@ -23,41 +23,31 @@ fun FeatureCard(
 
     Card(
         modifier = modifier
-            .fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+            .height(48.dp)
+            .border(
+                width = 0.5.dp,
+                color = palette.surfaceContainerHighest,
+                shape = RoundedCornerShape(24.dp)
+            ),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = palette.surfaceContainer
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.accentSubtle),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = feature.icon,
-                    contentDescription = feature.title,
-                    tint = palette.accent,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             Text(
                 text = feature.title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = palette.textPrimary,
-                letterSpacing = 0.1.sp
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Normal,
+                color = palette.textSecondary,
+                textAlign = TextAlign.Center,
+                letterSpacing = 0.2.sp
             )
         }
     }
