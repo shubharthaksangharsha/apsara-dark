@@ -98,6 +98,7 @@ class LiveSessionViewModel(
     // Track if we've been connected before in this live session (for detecting reconnections)
     private var hasBeenConnected = false
     private var hasResumptionHandle = false
+    private var shownResumptionReady = false
 
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
@@ -326,6 +327,17 @@ class LiveSessionViewModel(
             Log.d(TAG, "Session resumption: resumable=${event.resumable}, hasHandle=${event.hasHandle}")
             if (event.resumable && event.hasHandle) {
                 hasResumptionHandle = true
+                // Show a one-time subtle message when first handle arrives
+                if (!shownResumptionReady) {
+                    shownResumptionReady = true
+                    messages.add(
+                        LiveMessage(
+                            role = LiveMessage.Role.APSARA,
+                            text = "🔒 Session resumption active",
+                            isStreaming = false
+                        )
+                    )
+                }
             }
         }.launchIn(viewModelScope)
 
@@ -386,6 +398,7 @@ class LiveSessionViewModel(
         sessionResumed = false
         hasBeenConnected = false
         hasResumptionHandle = false
+        shownResumptionReady = false
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
     }
