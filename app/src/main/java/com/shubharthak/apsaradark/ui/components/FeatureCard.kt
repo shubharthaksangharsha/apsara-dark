@@ -19,12 +19,14 @@ fun FeatureCard(
     feature: MainFeature,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalThemeManager.current.currentTheme
+
     Card(
         modifier = modifier
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = SurfaceContainer
+            containerColor = palette.surfaceContainer
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -37,13 +39,13 @@ fun FeatureCard(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(AccentSubtle),
+                    .background(palette.accentSubtle),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = feature.icon,
                     contentDescription = feature.title,
-                    tint = Purple80,
+                    tint = palette.accent,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -54,7 +56,7 @@ fun FeatureCard(
                 text = feature.title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary,
+                color = palette.textPrimary,
                 letterSpacing = 0.1.sp
             )
         }

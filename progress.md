@@ -65,6 +65,25 @@ com.shubharthak.apsaradark
 
 ---
 
+## v0.3.0 — Theme System (Feb 9, 2026)
+
+### What was done
+
+- **8 VS Code-inspired themes**: Dark (default), Monokai, Nightly, Solarized, Dracula, Nord, Light, Monochrome.
+- **Settings screen**: Accessible from drawer → Settings. Shows a scrollable list of theme cards.
+- **Each theme card** shows: 3 color preview dots, theme name, dark/light label, mini preview bar, and a check indicator for the active theme.
+- **ThemeManager**: Singleton that persists theme choice to SharedPreferences — survives app restarts.
+- **All components refactored**: HomeScreen, AppDrawer, FeatureCard, BottomInputBar all read from `LocalThemeManager` — no more hardcoded colors.
+- **Dynamic status/nav bar**: System bars update color and light/dark appearance per theme.
+
+### New files
+
+- `ui/theme/AppThemes.kt` — all 8 palette definitions
+- `ui/theme/ThemeManager.kt` — state holder + SharedPreferences persistence + CompositionLocal
+- `ui/screens/SettingsScreen.kt` — theme picker UI
+
+---
+
 ### Next steps
 
 - Wire up Gemini Live API for the Talk feature.

@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -34,18 +33,30 @@ fun HomeScreen() {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
+    var showSettings by remember { mutableStateOf(false) }
+
+    val themeManager = LocalThemeManager.current
+    val palette = themeManager.currentTheme
+
+    if (showSettings) {
+        SettingsScreen(onBack = { showSettings = false })
+        return
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = SurfaceContainer,
-                drawerContentColor = TextPrimary,
+                drawerContainerColor = palette.surfaceContainer,
+                drawerContentColor = palette.textPrimary,
                 modifier = Modifier.width(300.dp)
             ) {
                 AppDrawerContent(
-                    onItemClick = {
+                    onItemClick = { item ->
                         scope.launch { drawerState.close() }
+                        if (item.title == "Settings") {
+                            showSettings = true
+                        }
                     },
                     onClose = {
                         scope.launch { drawerState.close() }
@@ -54,12 +65,11 @@ fun HomeScreen() {
             }
         },
         gesturesEnabled = true,
-        scrimColor = SurfaceDark.copy(alpha = 0.6f)
+        scrimColor = palette.surface.copy(alpha = 0.6f)
     ) {
         Scaffold(
-            containerColor = SurfaceDark,
+            containerColor = palette.surface,
             topBar = {
-                // Shimmer animation for title
                 val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
                 val shimmerOffset by infiniteTransition.animateFloat(
                     initialValue = -200f,
@@ -72,9 +82,9 @@ fun HomeScreen() {
                 )
                 val shimmerBrush = Brush.linearGradient(
                     colors = listOf(
-                        TextPrimary,
-                        Purple80,
-                        TextPrimary
+                        palette.textPrimary,
+                        palette.accent,
+                        palette.textPrimary
                     ),
                     start = Offset(shimmerOffset, 0f),
                     end = Offset(shimmerOffset + 200f, 0f)
@@ -107,14 +117,14 @@ fun HomeScreen() {
                             Icon(
                                 Icons.Outlined.Menu,
                                 contentDescription = "Menu",
-                                tint = TextSecondary,
+                                tint = palette.textSecondary,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = SurfaceDark,
-                        titleContentColor = TextPrimary
+                        containerColor = palette.surface,
+                        titleContentColor = palette.textPrimary
                     )
                 )
             },
@@ -134,7 +144,6 @@ fun HomeScreen() {
                     .padding(paddingValues),
                 contentPadding = PaddingValues(bottom = 8.dp)
             ) {
-                // Greeting section
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Column(
@@ -145,21 +154,20 @@ fun HomeScreen() {
                         Text(
                             text = "Good evening,",
                             fontSize = 14.sp,
-                            color = TextTertiary,
+                            color = palette.textTertiary,
                             letterSpacing = 0.3.sp
                         )
                         Text(
                             text = "Shubharthak",
                             fontSize = 28.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary,
+                            color = palette.textPrimary,
                             letterSpacing = (-0.3).sp
                         )
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // Feature grid
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Row(

@@ -3,7 +3,6 @@ package com.shubharthak.apsaradark.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.ui.theme.*
@@ -34,24 +32,25 @@ fun BottomInputBar(
     onAttachClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalThemeManager.current.currentTheme
     var isFocused by remember { mutableStateOf(false) }
 
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) Purple80.copy(alpha = 0.4f) else SurfaceContainerHighest,
+        targetValue = if (isFocused) palette.accent.copy(alpha = 0.4f) else palette.surfaceContainerHighest,
         label = "borderColor"
     )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SurfaceDark)
+            .background(palette.surface)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
-                .background(SurfaceContainer)
+                .background(palette.surfaceContainer)
                 .border(
                     width = 1.dp,
                     color = borderColor,
@@ -60,7 +59,6 @@ fun BottomInputBar(
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Attach button
             IconButton(
                 onClick = onAttachClick,
                 modifier = Modifier.size(36.dp)
@@ -68,12 +66,11 @@ fun BottomInputBar(
                 Icon(
                     Icons.Outlined.Add,
                     contentDescription = "Attach",
-                    tint = TextSecondary,
+                    tint = palette.textSecondary,
                     modifier = Modifier.size(20.dp)
                 )
             }
 
-            // Text field
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -84,7 +81,7 @@ fun BottomInputBar(
                     Text(
                         text = "Ask Apsara anything…",
                         fontSize = 15.sp,
-                        color = TextTertiary,
+                        color = palette.textTertiary,
                         letterSpacing = 0.2.sp
                     )
                 }
@@ -93,10 +90,10 @@ fun BottomInputBar(
                     onValueChange = onValueChange,
                     textStyle = TextStyle(
                         fontSize = 15.sp,
-                        color = TextPrimary,
+                        color = palette.textPrimary,
                         letterSpacing = 0.2.sp
                     ),
-                    cursorBrush = SolidColor(Purple80),
+                    cursorBrush = SolidColor(palette.accent),
                     singleLine = false,
                     maxLines = 4,
                     modifier = Modifier
@@ -105,19 +102,18 @@ fun BottomInputBar(
                 )
             }
 
-            // Mic / Send button
             if (value.isNotEmpty()) {
                 IconButton(
                     onClick = onSend,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Purple80)
+                        .background(palette.accent)
                 ) {
                     Icon(
                         Icons.Outlined.ArrowUpward,
                         contentDescription = "Send",
-                        tint = SurfaceDark,
+                        tint = palette.surface,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -127,12 +123,12 @@ fun BottomInputBar(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(AccentSubtle)
+                        .background(palette.accentSubtle)
                 ) {
                     Icon(
                         Icons.Filled.Mic,
                         contentDescription = "Voice",
-                        tint = Purple80,
+                        tint = palette.accent,
                         modifier = Modifier.size(18.dp)
                     )
                 }

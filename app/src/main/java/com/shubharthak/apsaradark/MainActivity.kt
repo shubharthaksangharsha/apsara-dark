@@ -5,11 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.shubharthak.apsaradark.ui.screens.HomeScreen
 import com.shubharthak.apsaradark.ui.theme.ApsaraDarkTheme
-import com.shubharthak.apsaradark.ui.theme.SurfaceDark
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
             ApsaraDarkTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = SurfaceDark
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     HomeScreen()
                 }

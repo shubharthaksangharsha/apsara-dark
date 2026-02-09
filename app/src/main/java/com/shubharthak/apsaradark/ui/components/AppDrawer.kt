@@ -3,7 +3,6 @@ package com.shubharthak.apsaradark.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,16 +19,17 @@ fun AppDrawerContent(
     onItemClick: (DrawerItem) -> Unit,
     onClose: () -> Unit
 ) {
+    val palette = LocalThemeManager.current.currentTheme
+
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .width(300.dp)
-            .background(SurfaceContainer)
+            .background(palette.surfaceContainer)
             .padding(top = 48.dp)
     ) {
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Menu items
         MockData.drawerItems.forEach { item ->
             DrawerMenuItem(item = item, onClick = { onItemClick(item) })
         }
@@ -43,6 +43,8 @@ private fun DrawerMenuItem(
     item: DrawerItem,
     onClick: () -> Unit
 ) {
+    val palette = LocalThemeManager.current.currentTheme
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -53,7 +55,7 @@ private fun DrawerMenuItem(
         Icon(
             imageVector = item.icon,
             contentDescription = item.title,
-            tint = TextSecondary,
+            tint = palette.textSecondary,
             modifier = Modifier.size(22.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -61,7 +63,7 @@ private fun DrawerMenuItem(
             text = item.title,
             fontSize = 15.sp,
             fontWeight = FontWeight.Normal,
-            color = TextPrimary
+            color = palette.textPrimary
         )
     }
 }
