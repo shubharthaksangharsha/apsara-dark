@@ -302,3 +302,23 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── live/LiveSessionViewModel.kt      — Thought buffer, thought attachment to messages
 └── live/LiveWebSocketClient.kt       — thought SharedFlow
 ```
+
+---
+
+## v2.3.0 — Thoughts UI Polish, Disconnect Logging (Feb 10, 2026)
+
+### What was done
+
+- **Thoughts position**: Collapsible "▸ Thoughts" section now appears **above** the main response text, so users see the reasoning context first.
+- **Bold markdown in thoughts**: `**text**` patterns in thought text are now parsed and rendered as bold (using `AnnotatedString` with `FontWeight.Bold`). The `**` markers are stripped from display.
+- **Disconnect logging**: Improved backend close handler — when user clicks End, the log now shows `Connection closed: client disconnected` instead of `Connection closed: unknown`. Also logs disconnect code.
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+└── ui/screens/HomeScreen.kt          — Thoughts above text, parseBoldMarkdown()
+
+backend/src/
+└── gemini-live-session.js            — Better onclose reason, disconnect logging
+```

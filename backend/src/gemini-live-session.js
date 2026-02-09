@@ -163,9 +163,10 @@ export class GeminiLiveSession {
             this.callbacks.onError?.({ type: 'gemini_error', message: error.message });
           },
           onclose: (event) => {
-            console.log('[GeminiLive] Connection closed:', event.reason || 'unknown');
+            const reason = event.reason || (this.connected ? 'server closed connection' : 'client disconnected');
+            console.log('[GeminiLive] Connection closed:', reason, `(code: ${event.code || 'n/a'})`);
             this.connected = false;
-            this.callbacks.onDisconnected?.({ reason: event.reason });
+            this.callbacks.onDisconnected?.({ reason });
           },
         },
       });
@@ -376,6 +377,8 @@ export class GeminiLiveSession {
    */
   async disconnect() {
     if (this.session) {
+      console.log('[GeminiLive] Disconnecting (client requested)...');
+      this.connected = false; // Set before close to avoid "unknown" in onclose
       try {
         this.session.close();
       } catch (e) {

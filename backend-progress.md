@@ -220,3 +220,13 @@ backend/src/
 ├── ws-handler.js          — Config logging on connect, force AUDIO modality
 └── gemini-live-session.js — Tools config logging
 ```
+
+---
+
+## v1.3.0 — Disconnect Logging (Feb 10, 2026)
+
+### What was done
+
+- **Disconnect reason fixed**: `onclose` handler now distinguishes between client-initiated disconnect (`client disconnected`) and server-initiated close (`server closed connection`), instead of showing `unknown`.
+- **Disconnect logging**: `disconnect()` method now logs `[GeminiLive] Disconnecting (client requested)...` and sets `connected = false` before closing, so the `onclose` callback can infer the reason.
+- **Close code logged**: `onclose` now logs the WebSocket close code alongside the reason.

@@ -411,18 +411,8 @@ private fun ApsaraBubble(
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 6.dp)
     ) {
-        // Main text — plain, no bubble
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            color = palette.textPrimary,
-            lineHeight = 22.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Collapsible "Thoughts" section — only shown when thought text exists
+        // Collapsible "Thoughts" section — shown ABOVE the main text
         if (!thought.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -443,15 +433,57 @@ private fun ApsaraBubble(
                 exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
             ) {
                 Text(
-                    text = thought,
+                    text = parseBoldMarkdown(thought),
                     fontSize = 13.sp,
                     color = palette.textTertiary,
                     lineHeight = 19.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 4.dp, top = 4.dp)
+                        .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
                 )
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
+
+        // Main text — plain, no bubble
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            color = palette.textPrimary,
+            lineHeight = 22.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
+}
+
+/**
+ * Parse **bold** markdown into an AnnotatedString with bold spans.
+ * Removes the ** markers and applies FontWeight.Bold to the wrapped text.
+ */
+private fun parseBoldMarkdown(input: String): androidx.compose.ui.text.AnnotatedString {
+    val builder = androidx.compose.ui.text.AnnotatedString.Builder()
+    var i = 0
+    while (i < input.length) {
+        val boldStart = input.indexOf("**", i)
+        if (boldStart == -1) {
+            // No more bold markers — append rest
+            builder.append(input.substring(i))
+            break
+        }
+        // Append text before the bold marker
+        builder.append(input.substring(i, boldStart))
+
+        val boldEnd = input.indexOf("**", boldStart + 2)
+        if (boldEnd == -1) {
+            // No closing marker — append rest as-is
+            builder.append(input.substring(boldStart))
+            break
+        }
+        // Append the bold text with style
+        builder.pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
+        builder.append(input.substring(boldStart + 2, boldEnd))
+        builder.pop()
+        i = boldEnd + 2
+    }
+    return builder.toAnnotatedString()
 }
