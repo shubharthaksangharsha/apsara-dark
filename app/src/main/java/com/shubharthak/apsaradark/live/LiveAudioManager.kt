@@ -83,6 +83,10 @@ class LiveAudioManager(private val context: Context) {
 
         // Set communication mode so Android's AEC pipeline can reference the speaker output
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        // Force audio to the loudspeaker instead of the earpiece
+        @Suppress("DEPRECATION")
+        audioManager.isSpeakerphoneOn = true
+        Log.d(TAG, "Speaker route: loudspeaker (speakerphone ON, AEC active)")
 
         try {
             audioRecord = AudioRecord(
@@ -161,7 +165,9 @@ class LiveAudioManager(private val context: Context) {
         audioRecord = null
         onAudioChunk = null
 
-        // Reset audio mode
+        // Reset audio mode and speaker route
+        @Suppress("DEPRECATION")
+        audioManager.isSpeakerphoneOn = false
         audioManager.mode = AudioManager.MODE_NORMAL
 
         Log.d(TAG, "Recording stopped")

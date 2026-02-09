@@ -85,9 +85,12 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
 
   // Tools configuration
   tools: {
-    googleSearch: true,
+    googleSearch: false,
     functionCalling: true,
   },
+
+  // Async function calls — if true, tool responses sent while model may still be generating
+  asyncFunctionCalls: false,
 
   // Function declarations (custom tools the model can call)
   functionDeclarations: TOOL_DECLARATIONS,

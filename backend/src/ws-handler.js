@@ -104,22 +104,54 @@ export function handleWebSocket(ws, apiKey) {
         // Notify client about the tool call
         send({ type: 'tool_call', functionCalls });
 
+        // Determine async/sync mode from session config
+        const isAsync = geminiSession?.config?.asyncFunctionCalls || false;
+        console.log(`[WS] Function call mode: ${isAsync ? 'ASYNC' : 'SYNC'}`);
+
         // Auto-execute registered tools and send responses back to Gemini
         if (functionCalls && functionCalls.length > 0 && geminiSession) {
-          const responses = functionCalls.map(fc => {
-            console.log(`[WS] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-            const result = executeTool(fc.name, fc.args || {});
-            console.log(`[WS] Tool result:`, JSON.stringify(result));
-            return {
-              id: fc.id,
-              name: fc.name,
-              response: result,
-            };
-          });
-          // Send tool responses back to Gemini so it can continue
-          geminiSession.sendToolResponse(responses);
-          // Also notify the client about the results
-          send({ type: 'tool_results', results: responses });
+          if (isAsync) {
+            // ASYNC — fire all tool executions concurrently, send responses as they complete
+            console.log(`[WS] Executing ${functionCalls.length} tool(s) ASYNC...`);
+            Promise.all(
+              functionCalls.map(async (fc) => {
+                console.log(`[WS] [ASYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+                const result = executeTool(fc.name, fc.args || {});
+                console.log(`[WS] [ASYNC] Tool result (${fc.name}):`, JSON.stringify(result));
+                return {
+                  id: fc.id,
+                  name: fc.name,
+                  response: {
+                    ...result,
+                    scheduling: 'INTERRUPT', // Tell Gemini to interrupt and use this response immediately
+                  },
+                };
+              })
+            ).then((responses) => {
+              // Send all tool responses back to Gemini at once
+              geminiSession?.sendToolResponse(responses);
+              send({ type: 'tool_results', results: responses, mode: 'async' });
+              console.log(`[WS] [ASYNC] All ${responses.length} tool response(s) sent with scheduling=INTERRUPT`);
+            });
+          } else {
+            // SYNC — execute tools sequentially, send all responses together
+            console.log(`[WS] Executing ${functionCalls.length} tool(s) SYNC...`);
+            const responses = functionCalls.map(fc => {
+              console.log(`[WS] [SYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+              const result = executeTool(fc.name, fc.args || {});
+              console.log(`[WS] [SYNC] Tool result (${fc.name}):`, JSON.stringify(result));
+              return {
+                id: fc.id,
+                name: fc.name,
+                response: result,
+              };
+            });
+            // Send tool responses back to Gemini so it can continue
+            geminiSession.sendToolResponse(responses);
+            // Also notify the client about the results
+            send({ type: 'tool_results', results: responses, mode: 'sync' });
+            console.log(`[WS] [SYNC] All ${responses.length} tool response(s) sent`);
+          }
         }
       },
       onGoAway: ({ timeLeft }) => {
@@ -168,6 +200,16 @@ export function handleWebSocket(ws, apiKey) {
         if (sessionConfig.responseModalities) {
           sessionConfig.responseModalities = ['AUDIO'];
         }
+
+        // Extract asyncFunctionCalls setting from client config
+        if (sessionConfig.asyncFunctionCalls !== undefined) {
+          console.log('[WS] Function call mode from client:', sessionConfig.asyncFunctionCalls ? 'ASYNC' : 'SYNC');
+          // Keep it in config — GeminiLiveSession will store it
+        }
+
+        // Google Search — only enabled when explicitly requested by client
+        const googleSearchEnabled = sessionConfig.tools?.googleSearch === true;
+        console.log('[WS] Google Search:', googleSearchEnabled ? 'ENABLED' : 'DISABLED');
 
         // Filter function declarations based on client's enabled tools list
         if (sessionConfig.enabledTools && Array.isArray(sessionConfig.enabledTools)) {

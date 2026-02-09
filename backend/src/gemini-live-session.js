@@ -116,13 +116,32 @@ export class GeminiLiveSession {
       tools.push({ googleSearch: {} });
     }
     if (this.config.tools?.functionCalling && this.config.functionDeclarations?.length > 0) {
-      tools.push({ functionDeclarations: this.config.functionDeclarations });
+      const isAsync = this.config.asyncFunctionCalls || false;
+      let declarations = this.config.functionDeclarations;
+
+      if (isAsync) {
+        // Add NON_BLOCKING behavior to each function declaration for async mode
+        declarations = declarations.map(fd => ({
+          ...fd,
+          behavior: 'NON_BLOCKING',
+        }));
+        console.log('[GeminiLive] Function declarations set to NON_BLOCKING (async mode)');
+      } else {
+        console.log('[GeminiLive] Function declarations set to BLOCKING (sync mode)');
+      }
+
+      // Log each tool's mode
+      for (const fd of declarations) {
+        console.log(`[GeminiLive]   Tool "${fd.name}" → ${fd.behavior || 'BLOCKING'}`);
+      }
+
+      tools.push({ functionDeclarations: declarations });
     }
     if (tools.length > 0) {
       config.tools = tools;
     }
 
-    console.log('[GeminiLive] Tools config — googleSearch:', this.config.tools?.googleSearch, '→ tools sent:', JSON.stringify(tools));
+    console.log('[GeminiLive] Tools config — googleSearch:', this.config.tools?.googleSearch, ', asyncFunctionCalls:', this.config.asyncFunctionCalls, '→ tools sent:', JSON.stringify(tools));
 
     return config;
   }

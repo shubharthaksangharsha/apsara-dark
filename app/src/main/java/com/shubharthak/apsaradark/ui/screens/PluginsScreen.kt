@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -67,53 +66,29 @@ fun PluginsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
         ) {
-            // Header
-            item {
-                Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        Icon(
-                            Icons.Outlined.Extension,
-                            contentDescription = null,
-                            tint = palette.accent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Tools & Plugins",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = palette.textPrimary
-                        )
-                    }
-                    Text(
-                        text = "Enable tools below to let Apsara use them during live sessions. When a tool is enabled, Apsara can automatically invoke it when relevant.",
-                        fontSize = 13.sp,
-                        color = palette.textTertiary,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-
-            // Plugin cards
+            // Tool toggles — simple rows, no icons, no descriptions
             items(MockData.availablePlugins) { plugin ->
                 PluginCard(
                     plugin = plugin,
                     isEnabled = when (plugin.id) {
                         "get_server_info" -> liveSettings.toolServerInfo
-                        "calculate" -> liveSettings.toolCalculate
-                        "get_random_fact" -> liveSettings.toolRandomFact
                         else -> false
                     },
                     onToggle = { enabled ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfo(enabled)
-                            "calculate" -> liveSettings.updateToolCalculate(enabled)
-                            "get_random_fact" -> liveSettings.updateToolRandomFact(enabled)
                         }
                     },
+                    palette = palette
+                )
+            }
+
+            // Async / Sync slider
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                FunctionCallModeCard(
+                    isAsync = liveSettings.asyncFunctionCalls,
+                    onToggle = { liveSettings.updateAsyncFunctionCalls(it) },
                     palette = palette
                 )
             }
@@ -143,53 +118,20 @@ private fun PluginCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(palette.surfaceContainer)
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        if (isEnabled) palette.accent.copy(alpha = 0.12f)
-                        else palette.textTertiary.copy(alpha = 0.08f)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = plugin.icon,
-                    contentDescription = plugin.title,
-                    tint = if (isEnabled) palette.accent else palette.textTertiary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            Text(
+                text = plugin.title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = palette.textPrimary,
+                modifier = Modifier.weight(1f)
+            )
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Title + Description
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = plugin.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.textPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = plugin.description,
-                    fontSize = 12.sp,
-                    color = palette.textTertiary,
-                    lineHeight = 16.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Toggle switch
             Switch(
                 checked = isEnabled,
                 onCheckedChange = onToggle,
@@ -201,6 +143,67 @@ private fun PluginCard(
                     uncheckedBorderColor = palette.textTertiary.copy(alpha = 0.3f)
                 )
             )
+        }
+    }
+}
+
+@Composable
+private fun FunctionCallModeCard(
+    isAsync: Boolean,
+    onToggle: (Boolean) -> Unit,
+    palette: ApsaraColorPalette
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.surfaceContainer)
+            .padding(16.dp)
+    ) {
+        Column {
+            Text(
+                text = "Function Call Mode",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = palette.textPrimary
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Sync",
+                    fontSize = 13.sp,
+                    fontWeight = if (!isAsync) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (!isAsync) palette.accent else palette.textTertiary
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Switch(
+                    checked = isAsync,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = palette.surface,
+                        checkedTrackColor = palette.accent,
+                        uncheckedThumbColor = palette.surface,
+                        uncheckedTrackColor = palette.accent.copy(alpha = 0.5f),
+                        uncheckedBorderColor = palette.accent.copy(alpha = 0.3f)
+                    )
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Text(
+                    text = "Async",
+                    fontSize = 13.sp,
+                    fontWeight = if (isAsync) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isAsync) palette.accent else palette.textTertiary
+                )
+            }
         }
     }
 }

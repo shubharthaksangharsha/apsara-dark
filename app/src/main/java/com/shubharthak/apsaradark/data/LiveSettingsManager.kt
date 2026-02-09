@@ -62,10 +62,8 @@ class LiveSettingsManager(context: Context) {
     var toolServerInfo by mutableStateOf(prefs.getBoolean("tool_server_info", true))
         private set
 
-    var toolCalculate by mutableStateOf(prefs.getBoolean("tool_calculate", true))
-        private set
-
-    var toolRandomFact by mutableStateOf(prefs.getBoolean("tool_random_fact", true))
+    // Async vs Sync function call mode
+    var asyncFunctionCalls by mutableStateOf(prefs.getBoolean("async_function_calls", false))
         private set
 
     // Setters (named updateX to avoid JVM clash with private set)
@@ -82,8 +80,7 @@ class LiveSettingsManager(context: Context) {
     fun updateGoogleSearch(v: Boolean) { googleSearch = v; prefs.edit().putBoolean("google_search", v).apply() }
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
     fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
-    fun updateToolCalculate(v: Boolean) { toolCalculate = v; prefs.edit().putBoolean("tool_calculate", v).apply() }
-    fun updateToolRandomFact(v: Boolean) { toolRandomFact = v; prefs.edit().putBoolean("tool_random_fact", v).apply() }
+    fun updateAsyncFunctionCalls(v: Boolean) { asyncFunctionCalls = v; prefs.edit().putBoolean("async_function_calls", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
     fun buildConfigMap(): Map<String, Any?> {
@@ -107,12 +104,11 @@ class LiveSettingsManager(context: Context) {
             "googleSearch" to googleSearch,
             "functionCalling" to hasAnyToolEnabled()
         )
+        config["asyncFunctionCalls"] = asyncFunctionCalls
 
         // Send the list of enabled tool names to the backend
         val enabledTools = mutableListOf<String>()
         if (toolServerInfo) enabledTools.add("get_server_info")
-        if (toolCalculate) enabledTools.add("calculate")
-        if (toolRandomFact) enabledTools.add("get_random_fact")
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools
         }
@@ -121,7 +117,7 @@ class LiveSettingsManager(context: Context) {
     }
 
     /** Check if any plugin tool is enabled */
-    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCalculate || toolRandomFact
+    fun hasAnyToolEnabled(): Boolean = toolServerInfo
 
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
