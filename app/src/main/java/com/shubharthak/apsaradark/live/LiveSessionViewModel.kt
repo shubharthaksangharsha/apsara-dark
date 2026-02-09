@@ -71,8 +71,14 @@ class LiveSessionViewModel(
     var liveState by mutableStateOf(LiveState.IDLE)
         private set
 
-    var isMuted by mutableStateOf(false)
-        private set
+    // Uses custom setter to push mute state to the notification bridge
+    private var _isMuted by mutableStateOf(false)
+    var isMuted: Boolean
+        get() = _isMuted
+        private set(value) {
+            _isMuted = value
+            LiveSessionBridge.updateMuted(value)
+        }
 
     var lastError by mutableStateOf<String?>(null)
         private set
@@ -88,8 +94,14 @@ class LiveSessionViewModel(
     val messages = mutableStateListOf<LiveMessage>()
 
     // Who is currently speaking (for visualizer color)
-    var activeSpeaker by mutableStateOf(ActiveSpeaker.NONE)
-        private set
+    // Uses custom setter to also push state to the notification bridge
+    private var _activeSpeaker by mutableStateOf(ActiveSpeaker.NONE)
+    var activeSpeaker: ActiveSpeaker
+        get() = _activeSpeaker
+        private set(value) {
+            _activeSpeaker = value
+            LiveSessionBridge.updateSpeaker(value)
+        }
 
     // Session resumption — tracks if current session was resumed from a previous one
     var sessionResumed by mutableStateOf(false)
@@ -358,6 +370,12 @@ class LiveSessionViewModel(
             Log.d(TAG, "Stop live requested via notification")
             stopLive()
         }.launchIn(viewModelScope)
+
+        // Observe "mute toggle" requests from the foreground service notification
+        LiveSessionBridge.muteToggleRequested.onEach {
+            Log.d(TAG, "Mute toggle requested via notification")
+            toggleMute()
+        }.launchIn(viewModelScope)
     }
 
     private fun finalizeOutputMessage() {
@@ -410,6 +428,7 @@ class LiveSessionViewModel(
 
         // Start foreground service to keep session alive in background
         try {
+            LiveSessionBridge.updateLiveActive(true)
             LiveSessionService.start(context)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to start foreground service: ${e.message}")
@@ -438,8 +457,9 @@ class LiveSessionViewModel(
         isMuted = false
         activeSpeaker = ActiveSpeaker.NONE
 
-        // Stop foreground service
+        // Stop foreground service and reset bridge state
         try {
+            LiveSessionBridge.reset()
             LiveSessionService.stop(context)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to stop foreground service: ${e.message}")

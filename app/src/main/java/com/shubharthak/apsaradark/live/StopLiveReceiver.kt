@@ -6,17 +6,21 @@ import android.content.Intent
 import android.util.Log
 
 /**
- * Receives the "stop live" broadcast from the notification action.
- * Posts an event that the ViewModel can observe to stop the session.
+ * Receives broadcasts from notification actions (mute toggle, end session).
+ * Posts events that the ViewModel observes.
  */
 class StopLiveReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action == ACTION_STOP_LIVE) {
-            Log.d("StopLiveReceiver", "Stop live broadcast received")
-            // Stop the foreground service
-            LiveSessionService.stop(context)
-            // Post to the global stop event — ViewModel observes this
-            LiveSessionBridge.requestStopLive()
+        when (intent?.action) {
+            ACTION_STOP_LIVE -> {
+                Log.d("StopLiveReceiver", "Stop live broadcast received")
+                LiveSessionService.stop(context)
+                LiveSessionBridge.requestStopLive()
+            }
+            ACTION_MUTE_TOGGLE -> {
+                Log.d("StopLiveReceiver", "Mute toggle broadcast received")
+                LiveSessionBridge.requestMuteToggle()
+            }
         }
     }
 }

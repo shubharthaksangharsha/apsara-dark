@@ -10,14 +10,18 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.shubharthak.apsaradark.MainActivity
 import com.shubharthak.apsaradark.R
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.combine
 
 /**
  * Foreground service that keeps the Apsara Dark live session alive
  * when the app is in the background or the screen is off.
  *
- * Shows a persistent notification while a live session is active.
- * This prevents Android from killing the process and dropping the
- * WebSocket connection ("Software caused connection abort").
+ * Shows a persistent notification with:
+ * - Dynamic status text (who is speaking / listening / muted)
+ * - Visual indicators using emoji waveforms
+ * - Mute toggle action
+ * - End session action
  */
 class LiveSessionService : Service() {
 
@@ -41,6 +45,14 @@ class LiveSessionService : Service() {
         }
     }
 
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var notificationUpdateJob: Job? = null
+
+    // Track last notification state to avoid unnecessary rebuilds
+    private var lastSpeaker: ActiveSpeaker = ActiveSpeaker.NONE
+    private var lastMuted: Boolean = false
+    private var waveIndex: Int = 0
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
@@ -49,10 +61,9 @@ class LiveSessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "Service started")
-        val notification = buildNotification("Apsara is listening…")
+        val notification = buildNotification(ActiveSpeaker.NONE, isMuted = false)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Android 14+ requires specifying foreground service type
             startForeground(
                 NOTIFICATION_ID,
                 notification,
@@ -68,6 +79,9 @@ class LiveSessionService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
+        // Start observing bridge state to auto-update notification
+        startNotificationUpdates()
+
         return START_STICKY
     }
 
@@ -75,19 +89,42 @@ class LiveSessionService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "Service destroyed")
+        notificationUpdateJob?.cancel()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
     /**
-     * Update the notification text (e.g., when Apsara is speaking vs listening).
+     * Observe LiveSessionBridge state flows and update notification
+     * whenever speaker or mute state changes.
      */
-    fun updateNotification(text: String) {
-        val notification = buildNotification(text)
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, notification)
+    private fun startNotificationUpdates() {
+        notificationUpdateJob?.cancel()
+        notificationUpdateJob = serviceScope.launch {
+            // Combine speaker + muted flows
+            combine(
+                LiveSessionBridge.activeSpeaker,
+                LiveSessionBridge.isMuted
+            ) { speaker, muted ->
+                Pair(speaker, muted)
+            }.collect { (speaker, muted) ->
+                // Animate waveform: cycle through frames when someone is speaking
+                if (speaker != ActiveSpeaker.NONE) {
+                    waveIndex = (waveIndex + 1) % WAVE_FRAMES.size
+                }
+                // Only rebuild if state actually changed
+                if (speaker != lastSpeaker || muted != lastMuted) {
+                    lastSpeaker = speaker
+                    lastMuted = muted
+                    val notification = buildNotification(speaker, muted)
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.notify(NOTIFICATION_ID, notification)
+                }
+            }
+        }
     }
 
-    private fun buildNotification(contentText: String): Notification {
+    private fun buildNotification(speaker: ActiveSpeaker, isMuted: Boolean): Notification {
         // Tap notification → open the app
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -98,7 +135,48 @@ class LiveSessionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Stop action — user can end live session from notification
+        // ── Build status text and sub-text based on state ──
+
+        val (title, contentText, subText) = when {
+            isMuted -> Triple(
+                "Apsara Dark — Muted",
+                "🔇 Microphone muted · Tap to unmute",
+                "Mic off"
+            )
+            speaker == ActiveSpeaker.APSARA -> {
+                val wave = WAVE_FRAMES[waveIndex % WAVE_FRAMES.size]
+                Triple(
+                    "Apsara Dark — Speaking",
+                    "$wave Apsara is speaking…",
+                    "Apsara"
+                )
+            }
+            speaker == ActiveSpeaker.USER -> {
+                val wave = WAVE_FRAMES_USER[waveIndex % WAVE_FRAMES_USER.size]
+                Triple(
+                    "Apsara Dark — Listening",
+                    "$wave You are speaking…",
+                    "Listening"
+                )
+            }
+            else -> Triple(
+                "Apsara Dark — Live",
+                "✦ Listening for your voice…",
+                "Ready"
+            )
+        }
+
+        // ── Mute/Unmute action ──
+        val muteIntent = PendingIntent.getBroadcast(
+            this,
+            2,
+            Intent(ACTION_MUTE_TOGGLE).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val muteIcon = if (isMuted) R.drawable.ic_notif_mic_off else R.drawable.ic_notif_mic
+        val muteLabel = if (isMuted) "Unmute" else "Mute"
+
+        // ── End session action ──
         val stopIntent = PendingIntent.getBroadcast(
             this,
             1,
@@ -107,19 +185,21 @@ class LiveSessionService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Apsara Dark")
+            .setContentTitle(title)
             .setContentText(contentText)
+            .setSubText(subText)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .addAction(
-                android.R.drawable.ic_media_pause,
-                "End Session",
-                stopIntent
-            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setShowWhen(false)
+            .addAction(muteIcon, muteLabel, muteIntent)
+            .addAction(R.drawable.ic_notif_stop, "End", stopIntent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .build()
     }
 
@@ -132,6 +212,7 @@ class LiveSessionService : Service() {
             ).apply {
                 description = "Shows when Apsara Dark has an active live voice session"
                 setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
@@ -139,7 +220,32 @@ class LiveSessionService : Service() {
     }
 }
 
-/**
- * Broadcast action to stop the live session from the notification.
- */
+// ── Broadcast actions ───────────────────────────────────────────
+
 const val ACTION_STOP_LIVE = "com.shubharthak.apsaradark.STOP_LIVE"
+const val ACTION_MUTE_TOGGLE = "com.shubharthak.apsaradark.MUTE_TOGGLE"
+
+// ── Animated waveform frames for notification text ──────────────
+// These cycle through to give the impression of audio activity.
+
+private val WAVE_FRAMES = listOf(
+    "♪ ▁▃▅▇▅▃▁",
+    "♪ ▂▅▇▅▃▁▂",
+    "♪ ▃▇▅▃▁▂▃",
+    "♪ ▅▅▃▁▂▃▅",
+    "♪ ▇▃▁▂▃▅▇",
+    "♪ ▅▁▂▃▅▇▅",
+    "♪ ▃▂▃▅▇▅▃",
+    "♪ ▁▃▅▇▅▃▁"
+)
+
+private val WAVE_FRAMES_USER = listOf(
+    "🎤 ▁▃▅▇▅▃▁",
+    "🎤 ▂▅▇▅▃▁▂",
+    "🎤 ▃▇▅▃▁▂▃",
+    "🎤 ▅▅▃▁▂▃▅",
+    "🎤 ▇▃▁▂▃▅▇",
+    "🎤 ▅▁▂▃▅▇▅",
+    "🎤 ▃▂▃▅▇▅▃",
+    "🎤 ▁▃▅▇▅▃▁"
+)

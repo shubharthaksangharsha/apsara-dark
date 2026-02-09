@@ -39,12 +39,13 @@
             android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
 
-        <!-- Receiver to stop live session from notification -->
+        <!-- Receiver to handle notification actions (mute toggle, end session) -->
         <receiver
             android:name=".live.StopLiveReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.shubharthak.apsaradark.STOP_LIVE" />
+                <action android:name="com.shubharthak.apsaradark.MUTE_TOGGLE" />
             </intent-filter>
         </receiver>
     </application>
