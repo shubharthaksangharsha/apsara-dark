@@ -322,3 +322,32 @@ app/src/main/java/com/shubharthak/apsaradark/
 backend/src/
 └── gemini-live-session.js            — Better onclose reason, disconnect logging
 ```
+
+---
+
+## v2.4.0 — Per-Tool Async/Sync & Audio Output Routing Fix (Feb 10, 2026)
+
+### What was done
+
+- **Backend: Per-tool async/sync function calling**:
+  - `gemini-live-session.js` — `_buildGeminiConfig()` now reads `toolAsyncModes` (a `{ toolName: boolean }` map) from the session config. Tools marked `true` get `behavior: 'NON_BLOCKING'` in their function declaration; all others default to blocking. Removed the old global `asyncFunctionCalls` flag.
+  - `ws-handler.js` — `onToolCall` handler now partitions incoming function calls into async and sync groups based on `toolAsyncModes`. Sync tools execute sequentially with plain responses; async tools execute concurrently with `scheduling: 'INTERRUPT'` on their responses.
+  - `config.js` — Replaced `asyncFunctionCalls: false` with `toolAsyncModes: {}` in default config.
+
+- **Android: Audio output device routing fix**:
+  - `LiveAudioManager.kt` — Added a shared audio session ID (`sharedAudioSessionId`) so `AudioRecord` and `AudioTrack` share the same session, which is required for hardware AEC to correctly cancel playback from the mic input.
+  - `AudioTrack` is now created with the shared session ID (matching the reference `aec-info.kt` implementation) instead of using the default session.
+  - `setAudioOutputDevice()` now restarts the `AudioTrack` when switching output devices mid-session (via new `restartPlayback()` method), ensuring the routing change actually takes effect.
+  - `sharedAudioSessionId` is reset on `stopRecording()` to avoid stale sessions.
+
+### Files changed
+
+```
+backend/src/
+├── config.js                         — toolAsyncModes replaces asyncFunctionCalls
+├── ws-handler.js                     — Per-tool async/sync partitioning in onToolCall
+└── gemini-live-session.js            — Per-tool NON_BLOCKING in _buildGeminiConfig()
+
+app/src/main/java/com/shubharthak/apsaradark/
+└── live/LiveAudioManager.kt          — Shared audio session, AudioTrack restart on route change
+```

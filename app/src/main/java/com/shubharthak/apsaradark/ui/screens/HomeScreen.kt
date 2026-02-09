@@ -179,6 +179,9 @@ fun HomeScreen(
                     liveState = liveViewModel.liveState,
                     isMuted = liveViewModel.isMuted,
                     activeSpeaker = liveViewModel.activeSpeaker,
+                    currentAudioDevice = liveViewModel.audioManager.audioOutputDevice.collectAsState().value,
+                    onAudioDeviceChange = { device -> liveViewModel.audioManager.setAudioOutputDevice(device) },
+                    hasBluetooth = liveViewModel.audioManager.isBluetoothAvailable(),
                     focusRequester = focusRequester
                 )
             }

@@ -66,7 +66,7 @@ fun PluginsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
         ) {
-            // Tool toggles — simple rows, no icons, no descriptions
+            // Tool cards — each has enable toggle + async/sync toggle
             items(MockData.availablePlugins) { plugin ->
                 PluginCard(
                     plugin = plugin,
@@ -74,21 +74,20 @@ fun PluginsScreen(
                         "get_server_info" -> liveSettings.toolServerInfo
                         else -> false
                     },
+                    isAsync = when (plugin.id) {
+                        "get_server_info" -> liveSettings.toolServerInfoAsync
+                        else -> false
+                    },
                     onToggle = { enabled ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfo(enabled)
                         }
                     },
-                    palette = palette
-                )
-            }
-
-            // Async / Sync slider
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                FunctionCallModeCard(
-                    isAsync = liveSettings.asyncFunctionCalls,
-                    onToggle = { liveSettings.updateAsyncFunctionCalls(it) },
+                    onAsyncToggle = { async ->
+                        when (plugin.id) {
+                            "get_server_info" -> liveSettings.updateToolServerInfoAsync(async)
+                        }
+                    },
                     palette = palette
                 )
             }
@@ -110,47 +109,9 @@ fun PluginsScreen(
 private fun PluginCard(
     plugin: PluginInfo,
     isEnabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-    palette: ApsaraColorPalette
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.surfaceContainer)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = plugin.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = palette.textPrimary,
-                modifier = Modifier.weight(1f)
-            )
-
-            Switch(
-                checked = isEnabled,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = palette.surface,
-                    checkedTrackColor = palette.accent,
-                    uncheckedThumbColor = palette.textTertiary,
-                    uncheckedTrackColor = palette.surfaceContainer,
-                    uncheckedBorderColor = palette.textTertiary.copy(alpha = 0.3f)
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun FunctionCallModeCard(
     isAsync: Boolean,
     onToggle: (Boolean) -> Unit,
+    onAsyncToggle: (Boolean) -> Unit,
     palette: ApsaraColorPalette
 ) {
     Box(
@@ -161,48 +122,70 @@ private fun FunctionCallModeCard(
             .padding(16.dp)
     ) {
         Column {
-            Text(
-                text = "Function Call Mode",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = palette.textPrimary
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // Row 1: Tool name + enable/disable toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Sync",
-                    fontSize = 13.sp,
-                    fontWeight = if (!isAsync) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (!isAsync) palette.accent else palette.textTertiary
+                    text = plugin.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary,
+                    modifier = Modifier.weight(1f)
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
-
                 Switch(
-                    checked = isAsync,
+                    checked = isEnabled,
                     onCheckedChange = onToggle,
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = palette.surface,
                         checkedTrackColor = palette.accent,
-                        uncheckedThumbColor = palette.surface,
-                        uncheckedTrackColor = palette.accent.copy(alpha = 0.5f),
-                        uncheckedBorderColor = palette.accent.copy(alpha = 0.3f)
+                        uncheckedThumbColor = palette.textTertiary,
+                        uncheckedTrackColor = palette.surfaceContainer,
+                        uncheckedBorderColor = palette.textTertiary.copy(alpha = 0.3f)
                     )
                 )
+            }
 
-                Spacer(modifier = Modifier.width(12.dp))
+            // Row 2: Sync / Async toggle — only show when tool is enabled
+            if (isEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    text = "Async",
-                    fontSize = 13.sp,
-                    fontWeight = if (isAsync) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isAsync) palette.accent else palette.textTertiary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Sync",
+                        fontSize = 13.sp,
+                        fontWeight = if (!isAsync) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (!isAsync) palette.accent else palette.textTertiary
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Switch(
+                        checked = isAsync,
+                        onCheckedChange = onAsyncToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = palette.surface,
+                            checkedTrackColor = palette.accent,
+                            uncheckedThumbColor = palette.surface,
+                            uncheckedTrackColor = palette.accent.copy(alpha = 0.5f),
+                            uncheckedBorderColor = palette.accent.copy(alpha = 0.3f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Text(
+                        text = "Async",
+                        fontSize = 13.sp,
+                        fontWeight = if (isAsync) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isAsync) palette.accent else palette.textTertiary
+                    )
+                }
             }
         }
     }

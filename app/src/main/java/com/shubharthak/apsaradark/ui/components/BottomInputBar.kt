@@ -3,8 +3,10 @@ package com.shubharthak.apsaradark.ui.components
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.live.ActiveSpeaker
+import com.shubharthak.apsaradark.live.AudioOutputDevice
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.theme.*
 import kotlin.math.sin
@@ -53,6 +56,9 @@ fun BottomInputBar(
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
     activeSpeaker: ActiveSpeaker = ActiveSpeaker.NONE,
+    currentAudioDevice: AudioOutputDevice = AudioOutputDevice.LOUDSPEAKER,
+    onAudioDeviceChange: (AudioOutputDevice) -> Unit = {},
+    hasBluetooth: Boolean = false,
     focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier
 ) {
@@ -71,6 +77,9 @@ fun BottomInputBar(
                 liveState = liveState,
                 isMuted = isMuted,
                 activeSpeaker = activeSpeaker,
+                currentAudioDevice = currentAudioDevice,
+                onAudioDeviceChange = onAudioDeviceChange,
+                hasBluetooth = hasBluetooth,
                 onEnd = onLiveEnd,
                 onMuteToggle = onLiveMuteToggle,
                 onTextSend = onLiveTextSend,
@@ -232,11 +241,15 @@ private fun NormalModeBar(
 
 // ─── Live mode — ChatGPT-style: + | Type | Mic | [Visualizer] End ───────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LiveModeBar(
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
     activeSpeaker: ActiveSpeaker,
+    currentAudioDevice: AudioOutputDevice,
+    onAudioDeviceChange: (AudioOutputDevice) -> Unit,
+    hasBluetooth: Boolean,
     onEnd: () -> Unit,
     onMuteToggle: () -> Unit,
     onTextSend: (String) -> Unit,
@@ -245,6 +258,7 @@ private fun LiveModeBar(
 ) {
     val palette = LocalThemeManager.current.currentTheme
     var liveText by remember { mutableStateOf("") }
+    var showAudioDeviceMenu by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
@@ -319,27 +333,116 @@ private fun LiveModeBar(
             }
         }
 
-        // Mic mute/unmute — shows spinner while connecting
-        IconButton(
-            onClick = onMuteToggle,
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(palette.surfaceContainerHigh)
-        ) {
-            if (liveState == LiveSessionViewModel.LiveState.CONNECTING) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = palette.accent,
-                    strokeWidth = 2.dp
+        // Mic mute/unmute — tap to mute, long-press to switch audio output device
+        Box {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(palette.surfaceContainerHigh)
+                    .combinedClickable(
+                        onClick = onMuteToggle,
+                        onLongClick = { showAudioDeviceMenu = true }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (liveState == LiveSessionViewModel.LiveState.CONNECTING) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = palette.accent,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    // Show icon based on current audio device + mute state
+                    val icon = when {
+                        isMuted -> Icons.Filled.MicOff
+                        currentAudioDevice == AudioOutputDevice.BLUETOOTH -> Icons.Outlined.BluetoothAudio
+                        currentAudioDevice == AudioOutputDevice.EARPIECE -> Icons.Outlined.PhoneInTalk
+                        else -> Icons.Filled.Mic // Loudspeaker (default)
+                    }
+                    Icon(
+                        icon,
+                        contentDescription = if (isMuted) "Unmute" else "Audio: $currentAudioDevice",
+                        tint = if (isMuted) palette.textTertiary else palette.textPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Audio output device picker dropdown
+            DropdownMenu(
+                expanded = showAudioDeviceMenu,
+                onDismissRequest = { showAudioDeviceMenu = false },
+                modifier = Modifier.background(palette.surfaceContainer)
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Loudspeaker",
+                            color = if (currentAudioDevice == AudioOutputDevice.LOUDSPEAKER) palette.accent else palette.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = if (currentAudioDevice == AudioOutputDevice.LOUDSPEAKER) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.VolumeUp,
+                            contentDescription = null,
+                            tint = if (currentAudioDevice == AudioOutputDevice.LOUDSPEAKER) palette.accent else palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    onClick = {
+                        onAudioDeviceChange(AudioOutputDevice.LOUDSPEAKER)
+                        showAudioDeviceMenu = false
+                    }
                 )
-            } else {
-                Icon(
-                    if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
-                    contentDescription = if (isMuted) "Unmute" else "Mute",
-                    tint = if (isMuted) palette.textTertiary else palette.textPrimary,
-                    modifier = Modifier.size(20.dp)
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "Earpiece",
+                            color = if (currentAudioDevice == AudioOutputDevice.EARPIECE) palette.accent else palette.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = if (currentAudioDevice == AudioOutputDevice.EARPIECE) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.PhoneInTalk,
+                            contentDescription = null,
+                            tint = if (currentAudioDevice == AudioOutputDevice.EARPIECE) palette.accent else palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    onClick = {
+                        onAudioDeviceChange(AudioOutputDevice.EARPIECE)
+                        showAudioDeviceMenu = false
+                    }
                 )
+                if (hasBluetooth) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Bluetooth",
+                                color = if (currentAudioDevice == AudioOutputDevice.BLUETOOTH) palette.accent else palette.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = if (currentAudioDevice == AudioOutputDevice.BLUETOOTH) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Outlined.BluetoothAudio,
+                                contentDescription = null,
+                                tint = if (currentAudioDevice == AudioOutputDevice.BLUETOOTH) palette.accent else palette.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            onAudioDeviceChange(AudioOutputDevice.BLUETOOTH)
+                            showAudioDeviceMenu = false
+                        }
+                    )
+                }
             }
         }
 

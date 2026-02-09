@@ -116,19 +116,19 @@ export class GeminiLiveSession {
       tools.push({ googleSearch: {} });
     }
     if (this.config.tools?.functionCalling && this.config.functionDeclarations?.length > 0) {
-      const isAsync = this.config.asyncFunctionCalls || false;
-      let declarations = this.config.functionDeclarations;
+      // Per-tool async/sync modes: { "tool_name": true/false }
+      const toolAsyncModes = this.config.toolAsyncModes || {};
+      const hasAnyAsync = Object.values(toolAsyncModes).some(v => v === true);
 
-      if (isAsync) {
-        // Add NON_BLOCKING behavior to each function declaration for async mode
-        declarations = declarations.map(fd => ({
-          ...fd,
-          behavior: 'NON_BLOCKING',
-        }));
-        console.log('[GeminiLive] Function declarations set to NON_BLOCKING (async mode)');
-      } else {
-        console.log('[GeminiLive] Function declarations set to BLOCKING (sync mode)');
-      }
+      let declarations = this.config.functionDeclarations.map(fd => {
+        const isToolAsync = toolAsyncModes[fd.name] === true;
+        if (isToolAsync) {
+          return { ...fd, behavior: 'NON_BLOCKING' };
+        }
+        // Default: BLOCKING (omit behavior field, which defaults to blocking)
+        const { behavior, ...rest } = fd;
+        return rest;
+      });
 
       // Log each tool's mode
       for (const fd of declarations) {
@@ -136,12 +136,13 @@ export class GeminiLiveSession {
       }
 
       tools.push({ functionDeclarations: declarations });
+      console.log(`[GeminiLive] Per-tool async modes: ${JSON.stringify(toolAsyncModes)} (${hasAnyAsync ? 'some async' : 'all sync'})`);
     }
     if (tools.length > 0) {
       config.tools = tools;
     }
 
-    console.log('[GeminiLive] Tools config — googleSearch:', this.config.tools?.googleSearch, ', asyncFunctionCalls:', this.config.asyncFunctionCalls, '→ tools sent:', JSON.stringify(tools));
+    console.log('[GeminiLive] Tools config — googleSearch:', this.config.tools?.googleSearch, '→ tools sent:', JSON.stringify(tools));
 
     return config;
   }

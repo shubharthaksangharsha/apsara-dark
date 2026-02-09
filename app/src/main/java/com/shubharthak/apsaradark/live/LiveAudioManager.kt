@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -11,6 +12,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
@@ -20,9 +22,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
+ * Audio output device options — which speaker to route audio to.
+ */
+enum class AudioOutputDevice {
+    EARPIECE,      // Phone earpiece (top speaker)
+    LOUDSPEAKER,   // Phone loudspeaker (bottom speaker, hands-free)
+    BLUETOOTH      // Bluetooth headset/earbuds
+}
+
+/**
  * Records PCM audio from mic and plays PCM audio from Gemini.
  * Uses Android's built-in AEC (Acoustic Echo Cancellation) so the mic
  * doesn't pick up the speaker output — Apsara won't hear/interrupt herself.
+ *
+ * Supports routing audio to Earpiece, Loudspeaker, or Bluetooth,
+ * all with hardware AEC active via MODE_IN_COMMUNICATION.
  *
  * Input:  16kHz, mono, 16-bit PCM
  * Output: 24kHz, mono, 16-bit PCM
@@ -44,6 +58,10 @@ class LiveAudioManager(private val context: Context) {
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
+    // Current audio output device
+    private val _audioOutputDevice = MutableStateFlow(AudioOutputDevice.LOUDSPEAKER)
+    val audioOutputDevice: StateFlow<AudioOutputDevice> = _audioOutputDevice.asStateFlow()
+
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
     private var recordJob: Job? = null
@@ -54,16 +72,115 @@ class LiveAudioManager(private val context: Context) {
     private var echoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
 
+    // Shared audio session ID — AudioRecord and AudioTrack MUST share the same session
+    // for hardware AEC to correctly cancel the playback output from the mic input.
+    private var sharedAudioSessionId: Int = AudioManager.AUDIO_SESSION_ID_GENERATE
+
     private val playbackQueue = ConcurrentLinkedQueue<ByteArray>()
     private var onAudioChunk: ((ByteArray) -> Unit)? = null
 
     private val audioManager: AudioManager =
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
+    // Save previous audio state for restoration
+    private var previousAudioMode: Int = AudioManager.MODE_NORMAL
+    @Suppress("DEPRECATION")
+    private var wasSpeakerphoneOn: Boolean = false
+
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Apply audio routing based on selected output device.
+     * All modes use MODE_IN_COMMUNICATION for hardware AEC.
+     */
+    private fun applyAudioRouting(device: AudioOutputDevice) {
+        when (device) {
+            AudioOutputDevice.EARPIECE -> {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = false
+                try {
+                    audioManager.stopBluetoothSco()
+                    audioManager.isBluetoothScoOn = false
+                } catch (_: Exception) {}
+                Log.d(TAG, "🔊 Routing to EARPIECE + Hardware AEC")
+            }
+
+            AudioOutputDevice.LOUDSPEAKER -> {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = true
+                try {
+                    audioManager.stopBluetoothSco()
+                    audioManager.isBluetoothScoOn = false
+                } catch (_: Exception) {}
+                Log.d(TAG, "🔊 Routing to LOUDSPEAKER + Hardware AEC")
+            }
+
+            AudioOutputDevice.BLUETOOTH -> {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = false
+                audioManager.startBluetoothSco()
+                audioManager.isBluetoothScoOn = true
+                Log.d(TAG, "🔊 Routing to BLUETOOTH + Hardware AEC")
+            }
+        }
+    }
+
+    /**
+     * Set audio output device. Can be called while recording to switch live.
+     * Restarts the AudioTrack if playback is active so the new route takes effect.
+     */
+    fun setAudioOutputDevice(device: AudioOutputDevice) {
+        _audioOutputDevice.value = device
+        if (_isRecording.value) {
+            applyAudioRouting(device)
+            // Restart AudioTrack so it picks up the new routing
+            if (audioTrack != null) {
+                Log.d(TAG, "Restarting AudioTrack for route change to $device")
+                restartPlayback()
+            }
+        }
+        Log.d(TAG, "Audio output set to: $device")
+    }
+
+    /**
+     * Cycle through available output devices: Loudspeaker → Earpiece → Bluetooth → Loudspeaker
+     * Skips Bluetooth if not available.
+     */
+    fun cycleAudioOutputDevice(): AudioOutputDevice {
+        val hasBluetooth = isBluetoothAvailable()
+        val current = _audioOutputDevice.value
+        val next = when (current) {
+            AudioOutputDevice.LOUDSPEAKER -> AudioOutputDevice.EARPIECE
+            AudioOutputDevice.EARPIECE -> if (hasBluetooth) AudioOutputDevice.BLUETOOTH else AudioOutputDevice.LOUDSPEAKER
+            AudioOutputDevice.BLUETOOTH -> AudioOutputDevice.LOUDSPEAKER
+        }
+        setAudioOutputDevice(next)
+        return next
+    }
+
+    /**
+     * Check if Bluetooth audio output is available.
+     */
+    fun isBluetoothAvailable(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val audioDevices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                audioDevices.any {
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isBluetoothA2dpOn || audioManager.isBluetoothScoOn
+            }
+        } catch (_: Exception) { false }
     }
 
     /**
@@ -81,12 +198,13 @@ class LiveAudioManager(private val context: Context) {
         val bufferSize = AudioRecord.getMinBufferSize(INPUT_SAMPLE_RATE, CHANNEL_IN, ENCODING)
             .coerceAtLeast(4096)
 
-        // Set communication mode so Android's AEC pipeline can reference the speaker output
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        // Force audio to the loudspeaker instead of the earpiece
+        // Save previous audio state
+        previousAudioMode = audioManager.mode
         @Suppress("DEPRECATION")
-        audioManager.isSpeakerphoneOn = true
-        Log.d(TAG, "Speaker route: loudspeaker (speakerphone ON, AEC active)")
+        wasSpeakerphoneOn = audioManager.isSpeakerphoneOn
+
+        // Apply routing for selected output device (sets MODE_IN_COMMUNICATION + speaker/bt)
+        applyAudioRouting(_audioOutputDevice.value)
 
         try {
             audioRecord = AudioRecord(
@@ -102,7 +220,8 @@ class LiveAudioManager(private val context: Context) {
         }
 
         // Attach AEC (Acoustic Echo Canceler) if available
-        val sessionId = audioRecord?.audioSessionId ?: 0
+        val sessionId = audioRecord?.audioSessionId ?: AudioManager.AUDIO_SESSION_ID_GENERATE
+        sharedAudioSessionId = sessionId
         if (AcousticEchoCanceler.isAvailable()) {
             try {
                 echoCanceler = AcousticEchoCanceler.create(sessionId)
@@ -140,7 +259,7 @@ class LiveAudioManager(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Recording started (AEC mode)")
+        Log.d(TAG, "Recording started (AEC mode, output=${_audioOutputDevice.value})")
     }
 
     fun stopRecording() {
@@ -149,13 +268,9 @@ class LiveAudioManager(private val context: Context) {
         recordJob = null
 
         // Release audio effects
-        try {
-            echoCanceler?.release()
-        } catch (_: Exception) {}
+        try { echoCanceler?.release() } catch (_: Exception) {}
         echoCanceler = null
-        try {
-            noiseSuppressor?.release()
-        } catch (_: Exception) {}
+        try { noiseSuppressor?.release() } catch (_: Exception) {}
         noiseSuppressor = null
 
         try {
@@ -164,11 +279,16 @@ class LiveAudioManager(private val context: Context) {
         } catch (_: Exception) {}
         audioRecord = null
         onAudioChunk = null
+        sharedAudioSessionId = AudioManager.AUDIO_SESSION_ID_GENERATE
 
-        // Reset audio mode and speaker route
+        // Restore previous audio state
+        try {
+            audioManager.stopBluetoothSco()
+            audioManager.isBluetoothScoOn = false
+        } catch (_: Exception) {}
         @Suppress("DEPRECATION")
-        audioManager.isSpeakerphoneOn = false
-        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = wasSpeakerphoneOn
+        audioManager.mode = previousAudioMode
 
         Log.d(TAG, "Recording stopped")
     }
@@ -185,29 +305,36 @@ class LiveAudioManager(private val context: Context) {
     /**
      * Start the playback loop — drains the playbackQueue and writes to AudioTrack.
      * Uses USAGE_VOICE_COMMUNICATION so the AEC pipeline can reference this output
-     * for echo cancellation.
+     * for echo cancellation. Shares the audio session with AudioRecord for proper AEC.
      */
     fun startPlayback() {
         val bufferSize = AudioTrack.getMinBufferSize(OUTPUT_SAMPLE_RATE, CHANNEL_OUT, ENCODING)
             .coerceAtLeast(4096)
 
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(OUTPUT_SAMPLE_RATE)
-                    .setChannelMask(CHANNEL_OUT)
-                    .setEncoding(ENCODING)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
+        val sessionToUse = if (sharedAudioSessionId != AudioManager.AUDIO_SESSION_ID_GENERATE) {
+            sharedAudioSessionId
+        } else {
+            AudioManager.AUDIO_SESSION_ID_GENERATE
+        }
+
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
+
+        val format = AudioFormat.Builder()
+            .setSampleRate(OUTPUT_SAMPLE_RATE)
+            .setChannelMask(CHANNEL_OUT)
+            .setEncoding(ENCODING)
+            .build()
+
+        audioTrack = AudioTrack(
+            attrs,
+            format,
+            bufferSize * 2,
+            AudioTrack.MODE_STREAM,
+            sessionToUse
+        )
 
         audioTrack?.play()
 
@@ -222,7 +349,24 @@ class LiveAudioManager(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Playback started (voice communication mode)")
+        Log.d(TAG, "Playback started (voice communication mode, session=$sessionToUse)")
+    }
+
+    /**
+     * Restart playback — stops and re-creates the AudioTrack so it picks up
+     * any audio routing changes (e.g. switching from earpiece to loudspeaker).
+     * Preserves any queued audio data.
+     */
+    private fun restartPlayback() {
+        playbackJob?.cancel()
+        playbackJob = null
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+        } catch (_: Exception) {}
+        audioTrack = null
+        // Don't clear the queue — keep any pending audio
+        startPlayback()
     }
 
     fun stopPlayback() {

@@ -104,39 +104,21 @@ export function handleWebSocket(ws, apiKey) {
         // Notify client about the tool call
         send({ type: 'tool_call', functionCalls });
 
-        // Determine async/sync mode from session config
-        const isAsync = geminiSession?.config?.asyncFunctionCalls || false;
-        console.log(`[WS] Function call mode: ${isAsync ? 'ASYNC' : 'SYNC'}`);
+        // Per-tool async/sync modes from session config
+        const toolAsyncModes = geminiSession?.config?.toolAsyncModes || {};
 
         // Auto-execute registered tools and send responses back to Gemini
         if (functionCalls && functionCalls.length > 0 && geminiSession) {
-          if (isAsync) {
-            // ASYNC — fire all tool executions concurrently, send responses as they complete
-            console.log(`[WS] Executing ${functionCalls.length} tool(s) ASYNC...`);
-            Promise.all(
-              functionCalls.map(async (fc) => {
-                console.log(`[WS] [ASYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-                const result = executeTool(fc.name, fc.args || {});
-                console.log(`[WS] [ASYNC] Tool result (${fc.name}):`, JSON.stringify(result));
-                return {
-                  id: fc.id,
-                  name: fc.name,
-                  response: {
-                    ...result,
-                    scheduling: 'INTERRUPT', // Tell Gemini to interrupt and use this response immediately
-                  },
-                };
-              })
-            ).then((responses) => {
-              // Send all tool responses back to Gemini at once
-              geminiSession?.sendToolResponse(responses);
-              send({ type: 'tool_results', results: responses, mode: 'async' });
-              console.log(`[WS] [ASYNC] All ${responses.length} tool response(s) sent with scheduling=INTERRUPT`);
-            });
-          } else {
-            // SYNC — execute tools sequentially, send all responses together
-            console.log(`[WS] Executing ${functionCalls.length} tool(s) SYNC...`);
-            const responses = functionCalls.map(fc => {
+          // Partition function calls into async and sync groups
+          const asyncCalls = functionCalls.filter(fc => toolAsyncModes[fc.name] === true);
+          const syncCalls = functionCalls.filter(fc => toolAsyncModes[fc.name] !== true);
+
+          console.log(`[WS] Tool calls: ${asyncCalls.length} async, ${syncCalls.length} sync`);
+
+          // ── Handle SYNC tools: execute sequentially, responses without scheduling ──
+          if (syncCalls.length > 0) {
+            console.log(`[WS] Executing ${syncCalls.length} tool(s) SYNC...`);
+            const syncResponses = syncCalls.map(fc => {
               console.log(`[WS] [SYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
               const result = executeTool(fc.name, fc.args || {});
               console.log(`[WS] [SYNC] Tool result (${fc.name}):`, JSON.stringify(result));
@@ -146,11 +128,33 @@ export function handleWebSocket(ws, apiKey) {
                 response: result,
               };
             });
-            // Send tool responses back to Gemini so it can continue
-            geminiSession.sendToolResponse(responses);
-            // Also notify the client about the results
-            send({ type: 'tool_results', results: responses, mode: 'sync' });
-            console.log(`[WS] [SYNC] All ${responses.length} tool response(s) sent`);
+            geminiSession.sendToolResponse(syncResponses);
+            send({ type: 'tool_results', results: syncResponses, mode: 'sync' });
+            console.log(`[WS] [SYNC] ${syncResponses.length} tool response(s) sent`);
+          }
+
+          // ── Handle ASYNC tools: fire concurrently, responses with scheduling=INTERRUPT ──
+          if (asyncCalls.length > 0) {
+            console.log(`[WS] Executing ${asyncCalls.length} tool(s) ASYNC...`);
+            Promise.all(
+              asyncCalls.map(async (fc) => {
+                console.log(`[WS] [ASYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+                const result = executeTool(fc.name, fc.args || {});
+                console.log(`[WS] [ASYNC] Tool result (${fc.name}):`, JSON.stringify(result));
+                return {
+                  id: fc.id,
+                  name: fc.name,
+                  response: {
+                    ...result,
+                    scheduling: 'INTERRUPT', // Interrupt model and use response immediately
+                  },
+                };
+              })
+            ).then((asyncResponses) => {
+              geminiSession?.sendToolResponse(asyncResponses);
+              send({ type: 'tool_results', results: asyncResponses, mode: 'async' });
+              console.log(`[WS] [ASYNC] ${asyncResponses.length} tool response(s) sent with scheduling=INTERRUPT`);
+            });
           }
         }
       },
@@ -201,11 +205,15 @@ export function handleWebSocket(ws, apiKey) {
           sessionConfig.responseModalities = ['AUDIO'];
         }
 
-        // Extract asyncFunctionCalls setting from client config
-        if (sessionConfig.asyncFunctionCalls !== undefined) {
-          console.log('[WS] Function call mode from client:', sessionConfig.asyncFunctionCalls ? 'ASYNC' : 'SYNC');
-          // Keep it in config — GeminiLiveSession will store it
+        // Extract per-tool async modes from client config
+        const toolAsyncModes = sessionConfig.toolAsyncModes || {};
+        if (Object.keys(toolAsyncModes).length > 0) {
+          console.log('[WS] Per-tool async modes:', JSON.stringify(toolAsyncModes));
         }
+        // Store in config for use during tool execution
+        sessionConfig.toolAsyncModes = toolAsyncModes;
+        // Clean up old global flag if present
+        delete sessionConfig.asyncFunctionCalls;
 
         // Google Search — only enabled when explicitly requested by client
         const googleSearchEnabled = sessionConfig.tools?.googleSearch === true;

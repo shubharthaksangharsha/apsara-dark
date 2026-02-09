@@ -62,8 +62,8 @@ class LiveSettingsManager(context: Context) {
     var toolServerInfo by mutableStateOf(prefs.getBoolean("tool_server_info", true))
         private set
 
-    // Async vs Sync function call mode
-    var asyncFunctionCalls by mutableStateOf(prefs.getBoolean("async_function_calls", false))
+    // Per-tool async/sync mode
+    var toolServerInfoAsync by mutableStateOf(prefs.getBoolean("tool_server_info_async", false))
         private set
 
     // Setters (named updateX to avoid JVM clash with private set)
@@ -80,7 +80,7 @@ class LiveSettingsManager(context: Context) {
     fun updateGoogleSearch(v: Boolean) { googleSearch = v; prefs.edit().putBoolean("google_search", v).apply() }
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
     fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
-    fun updateAsyncFunctionCalls(v: Boolean) { asyncFunctionCalls = v; prefs.edit().putBoolean("async_function_calls", v).apply() }
+    fun updateToolServerInfoAsync(v: Boolean) { toolServerInfoAsync = v; prefs.edit().putBoolean("tool_server_info_async", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
     fun buildConfigMap(): Map<String, Any?> {
@@ -104,13 +104,17 @@ class LiveSettingsManager(context: Context) {
             "googleSearch" to googleSearch,
             "functionCalling" to hasAnyToolEnabled()
         )
-        config["asyncFunctionCalls"] = asyncFunctionCalls
 
-        // Send the list of enabled tool names to the backend
+        // Send the list of enabled tool names and their async/sync mode to the backend
         val enabledTools = mutableListOf<String>()
-        if (toolServerInfo) enabledTools.add("get_server_info")
+        val toolAsyncModes = mutableMapOf<String, Boolean>()
+        if (toolServerInfo) {
+            enabledTools.add("get_server_info")
+            toolAsyncModes["get_server_info"] = toolServerInfoAsync
+        }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools
+            config["toolAsyncModes"] = toolAsyncModes
         }
 
         return config

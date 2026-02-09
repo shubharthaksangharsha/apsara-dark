@@ -89,8 +89,9 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
     functionCalling: true,
   },
 
-  // Async function calls — if true, tool responses sent while model may still be generating
-  asyncFunctionCalls: false,
+  // Per-tool async/sync modes: { "tool_name": true/false }
+  // true = NON_BLOCKING (async), false/missing = BLOCKING (sync)
+  toolAsyncModes: {},
 
   // Function declarations (custom tools the model can call)
   functionDeclarations: TOOL_DECLARATIONS,
