@@ -180,3 +180,24 @@ Server starts at:
 - Implement audio recording + playback on Android side
 - Add video streaming from camera
 - Build Talk screen UI with live waveform visualization
+
+---
+
+## v1.1.0 — Backend Refinements (Feb 10, 2026)
+
+### What was done
+
+- **Model support cleanup**: Removed unsupported `gemini-live-2.5-flash-preview` model. Only `gemini-2.5-flash-native-audio-preview-12-2025` is supported for live sessions.
+- **Voice/Modality logic**: Voice configuration (`speechConfig`) is only sent to Gemini when response modality includes AUDIO. Prevents invalid config errors when using TEXT-only modality.
+- **Error handling improvements**: Better error messages for unsupported model/modality combinations, returned to client as structured `{ type: "error", message }` messages.
+- **Audio/Video log spam fix**: Backend now silently discards audio/video data received when Gemini session is not connected, instead of logging warnings on every chunk.
+- **Output transcription**: Confirmed async — `output_transcription` events are forwarded to the client immediately as they arrive from Gemini, not batched or delayed until `turn_complete`.
+
+### Files changed
+
+```
+backend/src/
+├── config.js              — Single model, updated defaults
+├── ws-handler.js          — Improved error handling, silent discard of audio/video when disconnected
+└── gemini-live-session.js — Voice config conditional on modality
+```

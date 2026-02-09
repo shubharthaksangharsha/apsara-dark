@@ -49,8 +49,9 @@ export class GeminiLiveSession {
       config.systemInstruction = this.config.systemInstruction;
     }
 
-    // Voice / speech config
-    if (this.config.voice) {
+    // Voice / speech config — only for AUDIO modality
+    const isAudioModality = this.config.responseModalities.includes('AUDIO');
+    if (isAudioModality && this.config.voice) {
       config.speechConfig = {
         voiceConfig: {
           prebuiltVoiceConfig: {

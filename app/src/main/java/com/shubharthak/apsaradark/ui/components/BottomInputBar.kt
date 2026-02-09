@@ -2,6 +2,7 @@ package com.shubharthak.apsaradark.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -20,19 +21,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shubharthak.apsaradark.live.ActiveSpeaker
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.theme.*
+import kotlin.math.sin
 
 /**
  * BottomInputBar with two modes:
  * 1. Normal mode — text input + mic + live icon (default, when liveState == IDLE)
  * 2. Live mode  — ONLY when user taps the Live (GraphicEq) icon
- *                  Shows: + button, Type field, mic mute/unmute, End button (like ChatGPT)
+ *                  Shows: + button, Type field, [visualizer] End button, mic mute/unmute
  */
 @Composable
 fun BottomInputBar(
@@ -47,6 +52,7 @@ fun BottomInputBar(
     onLiveTextSend: (String) -> Unit,
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
+    activeSpeaker: ActiveSpeaker = ActiveSpeaker.NONE,
     focusRequester: FocusRequester = remember { FocusRequester() },
     modifier: Modifier = Modifier
 ) {
@@ -64,6 +70,7 @@ fun BottomInputBar(
             LiveModeBar(
                 liveState = liveState,
                 isMuted = isMuted,
+                activeSpeaker = activeSpeaker,
                 onEnd = onLiveEnd,
                 onMuteToggle = onLiveMuteToggle,
                 onTextSend = onLiveTextSend,
@@ -223,12 +230,13 @@ private fun NormalModeBar(
     }
 }
 
-// ─── Live mode — ChatGPT-style: + | Type | Mic | End ────────────────────────
+// ─── Live mode — ChatGPT-style: + | Type | Mic | [Visualizer] End ───────────
 
 @Composable
 private fun LiveModeBar(
     liveState: LiveSessionViewModel.LiveState,
     isMuted: Boolean,
+    activeSpeaker: ActiveSpeaker,
     onEnd: () -> Unit,
     onMuteToggle: () -> Unit,
     onTextSend: (String) -> Unit,
@@ -335,19 +343,22 @@ private fun LiveModeBar(
             }
         }
 
-        // End button
+        // Mini Visualizer + End button combined
         Button(
             onClick = onEnd,
             modifier = Modifier.height(42.dp),
             shape = RoundedCornerShape(24.dp),
             colors = ButtonDefaults.buttonColors(containerColor = palette.accent),
-            contentPadding = PaddingValues(horizontal = 16.dp)
+            contentPadding = PaddingValues(start = 10.dp, end = 16.dp)
         ) {
-            Icon(
-                Icons.Outlined.GraphicEq,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = palette.surface
+            // Mini live visualizer — left of "End"
+            MiniVisualizer(
+                activeSpeaker = activeSpeaker,
+                isConnecting = liveState == LiveSessionViewModel.LiveState.CONNECTING,
+                accentColor = palette.surface,
+                apsaraColor = palette.surface,
+                userColor = palette.surface.copy(alpha = 0.6f),
+                modifier = Modifier.size(width = 24.dp, height = 20.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
@@ -355,6 +366,86 @@ private fun LiveModeBar(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.surface
+            )
+        }
+    }
+}
+
+// ─── Mini Visualizer — animated bars that change color by speaker ────────────
+
+@Composable
+private fun MiniVisualizer(
+    activeSpeaker: ActiveSpeaker,
+    isConnecting: Boolean,
+    accentColor: Color,
+    apsaraColor: Color,
+    userColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "vizBars")
+    
+    // 3 bars with different phase offsets
+    val bar1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2832f, // 2π
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bar1"
+    )
+    val bar2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2832f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bar2"
+    )
+    val bar3 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.2832f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bar3"
+    )
+
+    val isActive = activeSpeaker != ActiveSpeaker.NONE && !isConnecting
+    val barColor = when (activeSpeaker) {
+        ActiveSpeaker.APSARA -> apsaraColor
+        ActiveSpeaker.USER -> userColor
+        ActiveSpeaker.NONE -> accentColor.copy(alpha = 0.5f)
+    }
+
+    Canvas(modifier = modifier) {
+        val barWidth = size.width / 5f
+        val gap = barWidth * 0.5f
+        val maxHeight = size.height * 0.85f
+        val minHeight = size.height * 0.2f
+        val centerY = size.height / 2f
+
+        val bars = listOf(bar1, bar2, bar3)
+        val totalBarsWidth = 3 * barWidth + 2 * gap
+        val startX = (size.width - totalBarsWidth) / 2f
+
+        bars.forEachIndexed { i, phase ->
+            val height = if (isActive) {
+                val normalized = (sin(phase + i * 1.2f) + 1f) / 2f // 0..1
+                minHeight + normalized * (maxHeight - minHeight)
+            } else {
+                minHeight
+            }
+            val x = startX + i * (barWidth + gap)
+            val top = centerY - height / 2f
+
+            drawRoundRect(
+                color = barColor,
+                topLeft = Offset(x, top),
+                size = androidx.compose.ui.geometry.Size(barWidth, height),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
             )
         }
     }

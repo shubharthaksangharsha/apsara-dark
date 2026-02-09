@@ -1,7 +1,6 @@
 package com.shubharthak.apsaradark.ui.screens
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,10 +9,12 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.*
@@ -22,16 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.data.MockData
+import com.shubharthak.apsaradark.live.ActiveSpeaker
+import com.shubharthak.apsaradark.live.LiveMessage
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.components.*
 import com.shubharthak.apsaradark.ui.theme.*
@@ -174,6 +175,7 @@ fun HomeScreen(
                     onLiveTextSend = { text -> liveViewModel.sendText(text) },
                     liveState = liveViewModel.liveState,
                     isMuted = liveViewModel.isMuted,
+                    activeSpeaker = liveViewModel.activeSpeaker,
                     focusRequester = focusRequester
                 )
             }
@@ -190,9 +192,9 @@ fun HomeScreen(
                     // ─── Live Mode Content ──────────────────────────────────
                     LiveModeContent(
                         liveState = liveViewModel.liveState,
-                        inputTranscript = liveViewModel.inputTranscript,
-                        outputTranscript = liveViewModel.outputTranscript,
-                        isMuted = liveViewModel.isMuted,
+                        messages = liveViewModel.messages,
+                        showInput = liveSettings.inputTranscription,
+                        showOutput = liveSettings.outputTranscription,
                         palette = palette,
                         modifier = Modifier
                             .fillMaxSize()
@@ -261,166 +263,158 @@ fun HomeScreen(
     }
 }
 
-// ─── Live Mode UI — ChatGPT Voice style ─────────────────────────────────────
+// ─── Live Mode UI — Chat-style with transcription bubbles ───────────────────
 
 @Composable
 private fun LiveModeContent(
     liveState: LiveSessionViewModel.LiveState,
-    inputTranscript: String,
-    outputTranscript: String,
-    isMuted: Boolean,
+    messages: List<LiveMessage>,
+    showInput: Boolean,
+    showOutput: Boolean,
     palette: ApsaraColorPalette,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+    val listState = rememberLazyListState()
 
-            // Animated orb / status indicator
-            LiveOrb(
-                liveState = liveState,
-                isMuted = isMuted,
-                palette = palette
-            )
+    // Filter messages based on transcription settings
+    val visibleMessages = messages.filter { msg ->
+        when (msg.role) {
+            LiveMessage.Role.USER -> showInput
+            LiveMessage.Role.APSARA -> showOutput
+        }
+    }
 
-            Spacer(modifier = Modifier.height(32.dp))
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(visibleMessages.size, visibleMessages.lastOrNull()?.text) {
+        if (visibleMessages.isNotEmpty()) {
+            listState.animateScrollToItem(visibleMessages.size - 1)
+        }
+    }
 
-            // Status text
-            Text(
-                text = when (liveState) {
-                    LiveSessionViewModel.LiveState.CONNECTING -> "Connecting..."
-                    LiveSessionViewModel.LiveState.CONNECTED -> if (isMuted) "Muted" else "Listening..."
-                    LiveSessionViewModel.LiveState.ERROR -> "Connection Error"
-                    else -> ""
-                },
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = palette.textSecondary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Output transcript (what Apsara is saying)
-            if (outputTranscript.isNotEmpty()) {
-                Text(
-                    text = outputTranscript,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = palette.textPrimary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 26.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+    Box(modifier = modifier) {
+        if (liveState == LiveSessionViewModel.LiveState.CONNECTING) {
+            // Connecting state
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        color = palette.accent,
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Connecting…",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.textSecondary
+                    )
+                }
             }
-
-            // Input transcript (what you're saying)
-            if (inputTranscript.isNotEmpty()) {
-                Text(
-                    text = inputTranscript,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = palette.textTertiary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+        } else if (visibleMessages.isEmpty()) {
+            // No messages yet — show "Start talking" placeholder
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Start talking",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.textTertiary,
+                        letterSpacing = (-0.2).sp
+                    )
+                    if (!showInput && !showOutput) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Transcription is off",
+                            fontSize = 13.sp,
+                            color = palette.textTertiary.copy(alpha = 0.6f)
+                        )
+                    }
+                }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
+        } else {
+            // Chat bubbles
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
+            ) {
+                items(visibleMessages, key = null) { message ->
+                    when (message.role) {
+                        LiveMessage.Role.USER -> UserBubble(
+                            text = message.text,
+                            palette = palette
+                        )
+                        LiveMessage.Role.APSARA -> ApsaraBubble(
+                            text = message.text,
+                            isStreaming = message.isStreaming,
+                            palette = palette
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
+// ─── User chat bubble — right-aligned ───────────────────────────────────────
+
 @Composable
-private fun LiveOrb(
-    liveState: LiveSessionViewModel.LiveState,
-    isMuted: Boolean,
+private fun UserBubble(
+    text: String,
     palette: ApsaraColorPalette
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "orbPulse")
-
-    // Pulsing scale for the orb
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-
-    // Glow alpha
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
-    )
-
-    val isActive = liveState == LiveSessionViewModel.LiveState.CONNECTED && !isMuted
-    val isConnecting = liveState == LiveSessionViewModel.LiveState.CONNECTING
-    val currentScale = if (isActive) pulseScale else 1f
-    val currentGlowAlpha = if (isActive) glowAlpha else if (isConnecting) 0.3f else 0.15f
-
-    val orbColor = when {
-        liveState == LiveSessionViewModel.LiveState.ERROR -> Color(0xFFEF5350)
-        isMuted -> palette.textTertiary
-        else -> palette.accent
-    }
-
-    Box(contentAlignment = Alignment.Center) {
-        // Outer glow
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
         Box(
             modifier = Modifier
-                .size((100 * currentScale).dp)
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            orbColor.copy(alpha = currentGlowAlpha),
-                            orbColor.copy(alpha = 0f)
-                        )
-                    )
-                )
-        )
-
-        // Inner orb
-        Box(
-            modifier = Modifier
-                .size((56 * currentScale).dp)
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            orbColor.copy(alpha = 0.9f),
-                            orbColor.copy(alpha = 0.5f)
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center
+                .widthIn(max = 280.dp)
+                .clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+                .background(palette.accent.copy(alpha = 0.15f))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            if (isConnecting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = palette.surface,
-                    strokeWidth = 2.dp
-                )
-            }
+            Text(
+                text = text,
+                fontSize = 15.sp,
+                color = palette.textPrimary,
+                lineHeight = 21.sp
+            )
         }
+    }
+}
+
+// ─── Apsara output — plain text, no bubble, no animation ────────────────────
+
+@Composable
+private fun ApsaraBubble(
+    text: String,
+    isStreaming: Boolean,
+    palette: ApsaraColorPalette
+) {
+    // Plain text — no bubble, no border, no streaming cursor
+    // Text is shown as soon as received (async), not waiting for turn complete
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            color = palette.textPrimary,
+            lineHeight = 22.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+        )
     }
 }

@@ -187,3 +187,48 @@ app/src/main/java/com/shubharthak/apsaradark/
 ### Debug APK
 
 Successfully assembled at `app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+## v2.1.0 — Live Mode UI/UX Refinement (Feb 10, 2026)
+
+### What was done
+
+- **Live mode chat UI overhaul**:
+  - **User messages only** have chat bubbles (right-aligned, accent-tinted rounded rectangle).
+  - **Apsara output** is now plain text — no bubble, no border, no background. Renders as simple left-aligned text.
+  - Removed streaming cursor animation (blinking `▌`) from Apsara output transcription.
+  - Output transcription is shown **as soon as received** (async, not waiting for turn complete). Each `output_transcription` event from the backend immediately appends to the visible message.
+  - Conversation history is maintained as a list of `LiveMessage` objects in `LiveSessionViewModel`, with `isStreaming` flag for in-progress messages.
+
+- **Center orb removed**: No center pulsing orb in live mode. Shows "Start talking" if no conversation yet.
+- **Transcription toggle logic**: Chat respects `inputTranscription` and `outputTranscription` toggles — messages are filtered based on user settings.
+- **Mini visualizer**: End button has a mini gradient visualizer, color/animation changes based on who is talking (user = accent, Apsara = secondary color).
+- **Connecting state**: Shows a centered progress spinner with "Connecting…" text.
+
+- **Backend model cleanup**:
+  - Only `gemini-2.5-flash-native-audio-preview-12-2025` is supported as the live model.
+  - Improved error handling for unsupported model/modality combinations.
+
+- **Voice/Modality logic**:
+  - Voice config is only sent to Gemini if response modality is AUDIO (both backend and frontend).
+  - Voice selector is disabled in Settings UI when modality is TEXT.
+
+- **Code cleanup**: Removed unused imports (`Activity`, `CircleShape`, `Color`, `Brush`, `TextAlign`) from HomeScreen.
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/screens/HomeScreen.kt          — LiveModeContent, ApsaraBubble (plain text), UserBubble (chat bubble)
+├── ui/components/BottomInputBar.kt   — Two-mode input bar (normal/live)
+├── ui/screens/SettingsScreen.kt      — Voice selector disabled for TEXT modality
+├── live/LiveSessionViewModel.kt      — Conversation tracking, streaming state, async output
+├── live/LiveWebSocketClient.kt       — WebSocket flows for transcription events
+├── live/LiveAudioManager.kt          — PCM audio record/playback
+└── data/LiveSettingsManager.kt       — Persistent live settings
+
+backend/src/
+├── ws-handler.js                     — Improved error handling
+└── config.js                         — Single model support
+```

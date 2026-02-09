@@ -3,6 +3,7 @@ package com.shubharthak.apsaradark.live
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -11,6 +12,22 @@ import androidx.lifecycle.viewModelScope
 import com.shubharthak.apsaradark.data.LiveSettingsManager
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+
+/**
+ * A single message in the live conversation.
+ */
+data class LiveMessage(
+    val role: Role,
+    val text: String,
+    val isStreaming: Boolean = false
+) {
+    enum class Role { USER, APSARA }
+}
+
+/**
+ * Who is currently "talking" in the live session.
+ */
+enum class ActiveSpeaker { NONE, USER, APSARA }
 
 /**
  * ViewModel that orchestrates the live session:
@@ -39,11 +56,24 @@ class LiveSessionViewModel(
     var lastError by mutableStateOf<String?>(null)
         private set
 
+    // Latest partial transcripts (for streaming display)
     var inputTranscript by mutableStateOf("")
         private set
 
     var outputTranscript by mutableStateOf("")
         private set
+
+    // Conversation history for chat bubbles
+    val messages = mutableStateListOf<LiveMessage>()
+
+    // Who is currently speaking (for visualizer color)
+    var activeSpeaker by mutableStateOf(ActiveSpeaker.NONE)
+        private set
+
+    // Accumulator for streaming output transcription
+    private var currentOutputBuffer = StringBuilder()
+    // Accumulator for streaming input transcription
+    private var currentInputBuffer = StringBuilder()
 
     init {
         // Observe WebSocket state changes
@@ -67,26 +97,64 @@ class LiveSessionViewModel(
                 wsState == LiveWebSocketClient.ConnectionState.ERROR) {
                 audioManager.stopRecording()
                 audioManager.stopPlayback()
+                activeSpeaker = ActiveSpeaker.NONE
             }
         }.launchIn(viewModelScope)
 
-        // Receive audio from Gemini → play it
+        // Receive audio from Gemini → play it, mark Apsara as speaking
         wsClient.audioData.onEach { bytes ->
             audioManager.enqueueAudio(bytes)
+            activeSpeaker = ActiveSpeaker.APSARA
         }.launchIn(viewModelScope)
 
-        // On interruption clear playback
+        // On interruption clear playback, user is speaking
         wsClient.interrupted.onEach {
             audioManager.clearPlaybackQueue()
+            // Finalize any in-progress output message
+            finalizeOutputMessage()
+            activeSpeaker = ActiveSpeaker.USER
         }.launchIn(viewModelScope)
 
-        // Transcriptions
+        // Turn complete → finalize output message
+        wsClient.turnComplete.onEach {
+            finalizeOutputMessage()
+            activeSpeaker = ActiveSpeaker.NONE
+        }.launchIn(viewModelScope)
+
+        // Input transcriptions — user speech
         wsClient.inputTranscription.onEach { text ->
             inputTranscript = text
+            activeSpeaker = ActiveSpeaker.USER
+
+            // Accumulate and add/update as user message
+            currentInputBuffer.append(text)
+            val fullText = currentInputBuffer.toString().trim()
+            if (fullText.isNotEmpty()) {
+                val lastUserIdx = messages.indexOfLast { it.role == LiveMessage.Role.USER && it.isStreaming }
+                if (lastUserIdx >= 0) {
+                    messages[lastUserIdx] = LiveMessage(LiveMessage.Role.USER, fullText, isStreaming = true)
+                } else {
+                    messages.add(LiveMessage(LiveMessage.Role.USER, fullText, isStreaming = true))
+                }
+            }
         }.launchIn(viewModelScope)
 
+        // Output transcriptions — Apsara speech
         wsClient.outputTranscription.onEach { text ->
             outputTranscript = text
+            activeSpeaker = ActiveSpeaker.APSARA
+
+            // Accumulate and add/update as Apsara message
+            currentOutputBuffer.append(text)
+            val fullText = currentOutputBuffer.toString().trim()
+            if (fullText.isNotEmpty()) {
+                val lastApsaraIdx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
+                if (lastApsaraIdx >= 0) {
+                    messages[lastApsaraIdx] = LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true)
+                } else {
+                    messages.add(LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true))
+                }
+            }
         }.launchIn(viewModelScope)
 
         // Errors
@@ -96,12 +164,38 @@ class LiveSessionViewModel(
         }.launchIn(viewModelScope)
     }
 
+    private fun finalizeOutputMessage() {
+        // Finalize the current streaming Apsara message
+        val idx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
+        if (idx >= 0) {
+            messages[idx] = messages[idx].copy(isStreaming = false)
+        }
+        currentOutputBuffer.clear()
+        outputTranscript = ""
+
+        // Also finalize any streaming user message
+        finalizeInputMessage()
+    }
+
+    private fun finalizeInputMessage() {
+        val idx = messages.indexOfLast { it.role == LiveMessage.Role.USER && it.isStreaming }
+        if (idx >= 0) {
+            messages[idx] = messages[idx].copy(isStreaming = false)
+        }
+        currentInputBuffer.clear()
+        inputTranscript = ""
+    }
+
     fun startLive() {
         if (liveState == LiveState.CONNECTING || liveState == LiveState.CONNECTED) return
 
         lastError = null
         inputTranscript = ""
         outputTranscript = ""
+        messages.clear()
+        currentInputBuffer.clear()
+        currentOutputBuffer.clear()
+        activeSpeaker = ActiveSpeaker.NONE
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
     }
@@ -121,6 +215,7 @@ class LiveSessionViewModel(
         wsClient.disconnect()
         liveState = LiveState.IDLE
         isMuted = false
+        activeSpeaker = ActiveSpeaker.NONE
     }
 
     fun toggleMute() {
@@ -130,6 +225,8 @@ class LiveSessionViewModel(
 
     fun sendText(text: String) {
         wsClient.sendText(text)
+        // Add as user message immediately
+        messages.add(LiveMessage(LiveMessage.Role.USER, text, isStreaming = false))
     }
 
     override fun onCleared() {

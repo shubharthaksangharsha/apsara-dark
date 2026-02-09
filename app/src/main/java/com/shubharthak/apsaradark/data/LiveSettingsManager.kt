@@ -80,7 +80,10 @@ class LiveSettingsManager(context: Context) {
     fun buildConfigMap(): Map<String, Any?> {
         val config = mutableMapOf<String, Any?>()
         config["model"] = model
-        config["voice"] = voice
+        // Only send voice config for AUDIO modality
+        if (responseModality == "AUDIO") {
+            config["voice"] = voice
+        }
         config["temperature"] = temperature.toDouble()
         config["responseModalities"] = listOf(responseModality)
         config["enableAffectiveDialog"] = affectiveDialog
@@ -104,8 +107,7 @@ class LiveSettingsManager(context: Context) {
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
         val availableModels = listOf(
-            "gemini-2.5-flash-native-audio-preview-12-2025",
-            "gemini-live-2.5-flash-preview"
+            "gemini-2.5-flash-native-audio-preview-12-2025"
         )
     }
 }

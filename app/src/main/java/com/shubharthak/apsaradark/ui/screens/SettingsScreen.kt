@@ -219,13 +219,15 @@ private fun LiveSettingsPanel(
             palette = palette
         )
 
-        // Voice selector
+        // Voice selector — disabled when modality is TEXT
+        val isAudioModality = liveSettings.responseModality == "AUDIO"
         SettingsDropdown(
-            label = "Voice",
-            value = liveSettings.voice,
+            label = "Voice" + if (!isAudioModality) " (Audio only)" else "",
+            value = if (isAudioModality) liveSettings.voice else "N/A",
             options = LiveSettingsManager.availableVoices,
             onSelect = { liveSettings.updateVoice(it) },
-            palette = palette
+            palette = palette,
+            enabled = isAudioModality
         )
 
         // Response modality
@@ -375,23 +377,26 @@ private fun SettingsDropdown(
     value: String,
     options: List<String>,
     onSelect: (String) -> Unit,
-    palette: ApsaraColorPalette
+    palette: ApsaraColorPalette,
+    enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
+
+    val contentAlpha = if (enabled) 1f else 0.4f
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(palette.surfaceContainer)
-            .clickable { expanded = true }
+            .clickable(enabled = enabled) { expanded = true }
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Text(
             text = label,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
-            color = palette.textTertiary,
+            color = palette.textTertiary.copy(alpha = contentAlpha),
             letterSpacing = 0.5.sp
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -402,37 +407,39 @@ private fun SettingsDropdown(
             Text(
                 text = value,
                 fontSize = 14.sp,
-                color = palette.textPrimary,
+                color = palette.textPrimary.copy(alpha = contentAlpha),
                 modifier = Modifier.weight(1f)
             )
             Icon(
                 Icons.Outlined.KeyboardArrowDown,
                 contentDescription = "Select",
-                tint = palette.textTertiary,
+                tint = palette.textTertiary.copy(alpha = contentAlpha),
                 modifier = Modifier.size(18.dp)
             )
         }
 
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.background(palette.surfaceContainerHigh)
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = option,
-                            fontSize = 14.sp,
-                            color = if (option == value) palette.accent else palette.textPrimary,
-                            fontWeight = if (option == value) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    }
-                )
+        if (enabled) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(palette.surfaceContainerHigh)
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = option,
+                                fontSize = 14.sp,
+                                color = if (option == value) palette.accent else palette.textPrimary,
+                                fontWeight = if (option == value) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        },
+                        onClick = {
+                            onSelect(option)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
