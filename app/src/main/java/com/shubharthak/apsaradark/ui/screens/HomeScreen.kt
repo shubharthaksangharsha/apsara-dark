@@ -44,7 +44,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     openDrawerOnReturn: Boolean = false,
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToPlugins: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -121,8 +122,9 @@ fun HomeScreen(
                 AppDrawerContent(
                     onItemClick = { item ->
                         scope.launch { drawerState.close() }
-                        if (item.title == "Settings") {
-                            onNavigateToSettings()
+                        when (item.title) {
+                            "Settings" -> onNavigateToSettings()
+                            "My Plugins" -> onNavigateToPlugins()
                         }
                     },
                     onClose = {

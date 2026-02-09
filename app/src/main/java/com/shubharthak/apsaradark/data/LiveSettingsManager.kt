@@ -58,6 +58,16 @@ class LiveSettingsManager(context: Context) {
     var includeThoughts by mutableStateOf(prefs.getBoolean("include_thoughts", false))
         private set
 
+    // Plugin/tool toggles — each tool can be independently enabled/disabled
+    var toolServerInfo by mutableStateOf(prefs.getBoolean("tool_server_info", true))
+        private set
+
+    var toolCalculate by mutableStateOf(prefs.getBoolean("tool_calculate", true))
+        private set
+
+    var toolRandomFact by mutableStateOf(prefs.getBoolean("tool_random_fact", true))
+        private set
+
     // Setters (named updateX to avoid JVM clash with private set)
     fun updateModel(v: String) { model = v; prefs.edit().putString("model", v).apply() }
     fun updateVoice(v: String) { voice = v; prefs.edit().putString("voice", v).apply() }
@@ -71,6 +81,9 @@ class LiveSettingsManager(context: Context) {
     fun updateContextCompression(v: Boolean) { contextCompression = v; prefs.edit().putBoolean("context_compression", v).apply() }
     fun updateGoogleSearch(v: Boolean) { googleSearch = v; prefs.edit().putBoolean("google_search", v).apply() }
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
+    fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
+    fun updateToolCalculate(v: Boolean) { toolCalculate = v; prefs.edit().putBoolean("tool_calculate", v).apply() }
+    fun updateToolRandomFact(v: Boolean) { toolRandomFact = v; prefs.edit().putBoolean("tool_random_fact", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
     fun buildConfigMap(): Map<String, Any?> {
@@ -92,10 +105,23 @@ class LiveSettingsManager(context: Context) {
         }
         config["tools"] = mapOf(
             "googleSearch" to googleSearch,
-            "functionCalling" to false
+            "functionCalling" to hasAnyToolEnabled()
         )
+
+        // Send the list of enabled tool names to the backend
+        val enabledTools = mutableListOf<String>()
+        if (toolServerInfo) enabledTools.add("get_server_info")
+        if (toolCalculate) enabledTools.add("calculate")
+        if (toolRandomFact) enabledTools.add("get_random_fact")
+        if (enabledTools.isNotEmpty()) {
+            config["enabledTools"] = enabledTools
+        }
+
         return config
     }
+
+    /** Check if any plugin tool is enabled */
+    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCalculate || toolRandomFact
 
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")

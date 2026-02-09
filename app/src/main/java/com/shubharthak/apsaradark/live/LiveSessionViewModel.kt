@@ -54,6 +54,9 @@ class LiveSessionViewModel(
     var isMuted by mutableStateOf(false)
         private set
 
+    // Tracks whether the USER manually toggled mute (distinct from auto-mute for echo prevention)
+    private var userMuted = false
+
     var lastError by mutableStateOf<String?>(null)
         private set
 
@@ -104,10 +107,19 @@ class LiveSessionViewModel(
             }
         }.launchIn(viewModelScope)
 
+        // ── Echo prevention: auto-mute mic while Apsara is speaking ──
+        // This prevents the mic from picking up speaker output and
+        // causing Apsara to interrupt herself.
+
         // Receive audio from Gemini → play it, mark Apsara as speaking
         wsClient.audioData.onEach { bytes ->
             audioManager.enqueueAudio(bytes)
             activeSpeaker = ActiveSpeaker.APSARA
+            // Echo prevention: auto-mute mic while Apsara is speaking,
+            // but only if the user hasn't manually muted already
+            if (!userMuted) {
+                audioManager.setMuted(true)
+            }
         }.launchIn(viewModelScope)
 
         // On interruption clear playback, user is speaking
@@ -116,12 +128,20 @@ class LiveSessionViewModel(
             // Finalize any in-progress output message
             finalizeOutputMessage()
             activeSpeaker = ActiveSpeaker.USER
+            // Echo prevention: unmute mic when user interrupts (they want to speak)
+            if (!userMuted) {
+                audioManager.setMuted(false)
+            }
         }.launchIn(viewModelScope)
 
         // Turn complete → finalize output message
         wsClient.turnComplete.onEach {
             finalizeOutputMessage()
             activeSpeaker = ActiveSpeaker.NONE
+            // Echo prevention: unmute mic after Apsara finishes speaking
+            if (!userMuted) {
+                audioManager.setMuted(false)
+            }
         }.launchIn(viewModelScope)
 
         // Input transcriptions — user speech
@@ -227,12 +247,14 @@ class LiveSessionViewModel(
         wsClient.disconnect()
         liveState = LiveState.IDLE
         isMuted = false
+        userMuted = false
         activeSpeaker = ActiveSpeaker.NONE
     }
 
     fun toggleMute() {
-        audioManager.toggleMute()
-        isMuted = audioManager.isMuted.value
+        userMuted = !userMuted
+        audioManager.setMuted(userMuted)
+        isMuted = userMuted
     }
 
     fun sendText(text: String) {

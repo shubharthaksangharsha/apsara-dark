@@ -6,11 +6,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.shubharthak.apsaradark.ui.screens.HomeScreen
+import com.shubharthak.apsaradark.ui.screens.PluginsScreen
 import com.shubharthak.apsaradark.ui.screens.SettingsScreen
 
 object Routes {
     const val HOME = "home"
     const val SETTINGS = "settings"
+    const val PLUGINS = "plugins"
 }
 
 @Composable
@@ -33,6 +35,9 @@ fun AppNavigation(
                 openDrawerOnReturn = openDrawer,
                 onNavigateToSettings = {
                     navController.navigate(Routes.SETTINGS)
+                },
+                onNavigateToPlugins = {
+                    navController.navigate(Routes.PLUGINS)
                 }
             )
         }
@@ -40,6 +45,16 @@ fun AppNavigation(
             SettingsScreen(
                 onBack = {
                     // Set flag on Home's savedStateHandle before popping
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("openDrawer", true)
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.PLUGINS) {
+            PluginsScreen(
+                onBack = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("openDrawer", true)

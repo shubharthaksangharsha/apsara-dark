@@ -14,6 +14,7 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { handleWebSocket } from './ws-handler.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
+import { TOOL_DECLARATIONS } from './tools.js';
 
 // --- Environment ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -60,6 +61,7 @@ app.get('/config', (req, res) => {
       systemInstruction: DEFAULT_SESSION_CONFIG.systemInstruction,
     },
     audio: AUDIO,
+    tools: TOOL_DECLARATIONS.map(t => ({ name: t.name, description: t.description })),
   });
 });
 

@@ -41,6 +41,7 @@
 
 import { GeminiLiveSession } from './gemini-live-session.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
+import { executeTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
 
 export function handleWebSocket(ws, apiKey) {
   let geminiSession = null;
@@ -100,7 +101,26 @@ export function handleWebSocket(ws, apiKey) {
         send({ type: 'generation_complete' });
       },
       onToolCall: ({ functionCalls }) => {
+        // Notify client about the tool call
         send({ type: 'tool_call', functionCalls });
+
+        // Auto-execute registered tools and send responses back to Gemini
+        if (functionCalls && functionCalls.length > 0 && geminiSession) {
+          const responses = functionCalls.map(fc => {
+            console.log(`[WS] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+            const result = executeTool(fc.name, fc.args || {});
+            console.log(`[WS] Tool result:`, JSON.stringify(result));
+            return {
+              id: fc.id,
+              name: fc.name,
+              response: result,
+            };
+          });
+          // Send tool responses back to Gemini so it can continue
+          geminiSession.sendToolResponse(responses);
+          // Also notify the client about the results
+          send({ type: 'tool_results', results: responses });
+        }
       },
       onGoAway: ({ timeLeft }) => {
         send({ type: 'go_away', timeLeft });
@@ -147,6 +167,18 @@ export function handleWebSocket(ws, apiKey) {
         // Force AUDIO modality — TEXT not supported by native audio model
         if (sessionConfig.responseModalities) {
           sessionConfig.responseModalities = ['AUDIO'];
+        }
+
+        // Filter function declarations based on client's enabled tools list
+        if (sessionConfig.enabledTools && Array.isArray(sessionConfig.enabledTools)) {
+          const enabledSet = new Set(sessionConfig.enabledTools);
+          sessionConfig.functionDeclarations = TOOL_DECLARATIONS.filter(t => enabledSet.has(t.name));
+          // Enable function calling if any tools are enabled
+          if (sessionConfig.functionDeclarations.length > 0) {
+            sessionConfig.tools = { ...sessionConfig.tools, functionCalling: true };
+          }
+          console.log('[WS] Enabled tools:', sessionConfig.enabledTools, '→ declarations:', sessionConfig.functionDeclarations.map(t => t.name));
+          delete sessionConfig.enabledTools; // Clean up — not a Gemini config field
         }
         
         // Log the config received from client
@@ -275,6 +307,17 @@ export function handleWebSocket(ws, apiKey) {
 
       case 'ping': {
         send({ type: 'pong' });
+        break;
+      }
+
+      case 'get_tools': {
+        send({
+          type: 'available_tools',
+          tools: TOOL_DECLARATIONS.map(t => ({
+            name: t.name,
+            description: t.description,
+          })),
+        });
         break;
       }
 

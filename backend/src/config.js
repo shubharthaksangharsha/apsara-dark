@@ -1,3 +1,5 @@
+import { TOOL_DECLARATIONS } from './tools.js';
+
 /**
  * Apsara Dark — Gemini Live Backend
  * 
@@ -88,7 +90,7 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
   },
 
   // Function declarations (custom tools the model can call)
-  functionDeclarations: [],
+  functionDeclarations: TOOL_DECLARATIONS,
 };
 
 // Audio format constants
