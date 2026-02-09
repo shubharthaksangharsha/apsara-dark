@@ -57,6 +57,15 @@ fun HomeScreen(
     var showLiveAttachmentSheet by remember { mutableStateOf(false) }
     var pastedImages by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
+    // Video preview state: expanded, minimized, or hidden
+    var videoMinimized by remember { mutableStateOf(false) }
+    // Whether we should show the camera (tracks ViewModel's isVideoActive)
+    val isVideoActive = liveViewModel.isVideoActive
+
+    // Hoisted camera settings — survive minimize/restore cycles
+    var cameraUseFront by remember { mutableStateOf(true) }
+    var cameraFlashEnabled by remember { mutableStateOf(false) }
+
     val themeManager = LocalThemeManager.current
     val palette = themeManager.currentTheme
 
@@ -74,6 +83,32 @@ fun HomeScreen(
             liveViewModel.startLive()
         } else {
             Toast.makeText(context, "Microphone permission is required for Live mode", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Camera permission launcher — for live video feature
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            videoMinimized = false
+            liveViewModel.startVideo()
+        } else {
+            Toast.makeText(context, "Camera permission is required for Video", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Helper to start video with permission check
+    fun startVideoWithPermission() {
+        val hasCamPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasCamPermission) {
+            videoMinimized = false
+            liveViewModel.startVideo()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -244,7 +279,62 @@ fun HomeScreen(
                 }
             },
             bottomBar = {
-                BottomInputBar(
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // ─── Minimized video indicator (bottom-right, above input bar) ──
+                    AnimatedVisibility(
+                        visible = isVideoActive && videoMinimized && isLiveActive,
+                        enter = scaleIn(tween(250)) + fadeIn(tween(200)),
+                        exit = scaleOut(tween(200)) + fadeOut(tween(150))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 16.dp, bottom = 8.dp),
+                            contentAlignment = Alignment.BottomEnd
+                        ) {
+                            MinimizedVideoIndicator(
+                                onClick = { videoMinimized = false }
+                            )
+                        }
+                    }
+
+                    // ─── Full camera preview (above input bar) ──────────────────
+                    AnimatedVisibility(
+                        visible = isVideoActive && !videoMinimized && isLiveActive,
+                        enter = expandVertically(
+                            expandFrom = Alignment.Bottom,
+                            animationSpec = tween(350, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(250)),
+                        exit = shrinkVertically(
+                            shrinkTowards = Alignment.Bottom,
+                            animationSpec = tween(300, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(200))
+                    ) {
+                        CameraPreviewCard(
+                            useFrontCamera = cameraUseFront,
+                            flashEnabled = cameraFlashEnabled,
+                            onUseFrontCameraChange = { cameraUseFront = it },
+                            onFlashEnabledChange = { cameraFlashEnabled = it },
+                            onClose = {
+                                liveViewModel.stopVideo()
+                                videoMinimized = false
+                                cameraUseFront = true
+                                cameraFlashEnabled = false
+                            },
+                            onMinimize = {
+                                videoMinimized = true
+                            },
+                            onFrameCaptured = { jpegBytes ->
+                                liveViewModel.sendVideoFrame(jpegBytes)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+
+                    // ─── Input bar ──────────────────────────────────────────────
+                    BottomInputBar(
                     onAttachClick = { showLiveAttachmentSheet = true },
                     onLiveEnd = { liveViewModel.stopLive() },
                     onLiveMuteToggle = { liveViewModel.toggleMute() },
@@ -261,6 +351,7 @@ fun HomeScreen(
                     onImagePasted = { uri -> pastedImages = pastedImages + uri },
                     onImageRemoved = { uri -> pastedImages = pastedImages - uri }
                 )
+                }
             }
         ) { paddingValues ->
             // Content switches between normal (feature cards) and live mode (waveform/transcript)
@@ -352,7 +443,7 @@ fun HomeScreen(
             onCameraClick = { /* TODO: open camera for live video */ },
             onPhotosClick = { /* TODO: pick photo to send */ },
             onFilesClick = { /* TODO: pick file to send */ },
-            onVideoClick = { /* TODO: record/pick video to send */ },
+            onVideoClick = { startVideoWithPermission() },
             onScreenshareClick = { /* TODO: start screen share */ }
         )
     }

@@ -227,6 +227,13 @@ class LiveWebSocketClient {
         webSocket?.send(msg)
     }
 
+    /** Send base64-encoded JPEG video frame */
+    fun sendVideo(jpegData: ByteArray, mimeType: String = "image/jpeg") {
+        val b64 = Base64.encodeToString(jpegData, Base64.NO_WRAP)
+        val msg = """{"type":"video","data":"$b64","mimeType":"$mimeType"}"""
+        webSocket?.send(msg)
+    }
+
     /** Send text message */
     fun sendText(text: String) {
         val msg = JsonObject().apply {

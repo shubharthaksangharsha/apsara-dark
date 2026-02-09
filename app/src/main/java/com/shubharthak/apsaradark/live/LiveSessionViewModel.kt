@@ -106,6 +106,25 @@ class LiveSessionViewModel(
             LiveSessionBridge.updateSpeaker(value)
         }
 
+    // ─── Video streaming state ─────────────────────────────
+    var isVideoActive by mutableStateOf(false)
+        private set
+
+    fun startVideo() {
+        isVideoActive = true
+    }
+
+    fun stopVideo() {
+        isVideoActive = false
+    }
+
+    /** Send a JPEG video frame to the backend */
+    fun sendVideoFrame(jpegData: ByteArray) {
+        if (isVideoActive && liveState == LiveState.CONNECTED) {
+            wsClient.sendVideo(jpegData)
+        }
+    }
+
     // Session resumption — tracks if current session was resumed from a previous one
     var sessionResumed by mutableStateOf(false)
         private set
@@ -507,6 +526,7 @@ class LiveSessionViewModel(
         wsClient.disconnect()
         liveState = LiveState.IDLE
         isMuted = false
+        isVideoActive = false
         activeSpeaker = ActiveSpeaker.NONE
 
         // Stop foreground service and reset bridge state
