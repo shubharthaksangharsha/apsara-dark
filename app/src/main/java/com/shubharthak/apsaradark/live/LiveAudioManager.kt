@@ -9,6 +9,8 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
@@ -19,6 +21,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Records PCM audio from mic and plays PCM audio from Gemini.
+ * Uses Android's built-in AEC (Acoustic Echo Cancellation) so the mic
+ * doesn't pick up the speaker output — Apsara won't hear/interrupt herself.
+ *
  * Input:  16kHz, mono, 16-bit PCM
  * Output: 24kHz, mono, 16-bit PCM
  */
@@ -45,8 +50,15 @@ class LiveAudioManager(private val context: Context) {
     private var playbackJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // AEC and noise suppressor effects
+    private var echoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+
     private val playbackQueue = ConcurrentLinkedQueue<ByteArray>()
     private var onAudioChunk: ((ByteArray) -> Unit)? = null
+
+    private val audioManager: AudioManager =
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -56,6 +68,7 @@ class LiveAudioManager(private val context: Context) {
 
     /**
      * Start recording mic audio. Calls onChunk with PCM byte arrays.
+     * Uses VOICE_COMMUNICATION source + AEC for echo cancellation.
      */
     fun startRecording(onChunk: (ByteArray) -> Unit) {
         if (!hasPermission()) {
@@ -68,6 +81,9 @@ class LiveAudioManager(private val context: Context) {
         val bufferSize = AudioRecord.getMinBufferSize(INPUT_SAMPLE_RATE, CHANNEL_IN, ENCODING)
             .coerceAtLeast(4096)
 
+        // Set communication mode so Android's AEC pipeline can reference the speaker output
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
         try {
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
@@ -79,6 +95,31 @@ class LiveAudioManager(private val context: Context) {
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException creating AudioRecord: ${e.message}")
             return
+        }
+
+        // Attach AEC (Acoustic Echo Canceler) if available
+        val sessionId = audioRecord?.audioSessionId ?: 0
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                echoCanceler = AcousticEchoCanceler.create(sessionId)
+                echoCanceler?.enabled = true
+                Log.d(TAG, "AEC enabled (session=$sessionId)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create AEC: ${e.message}")
+            }
+        } else {
+            Log.w(TAG, "AEC not available on this device")
+        }
+
+        // Attach Noise Suppressor if available
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(sessionId)
+                noiseSuppressor?.enabled = true
+                Log.d(TAG, "Noise suppressor enabled")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create noise suppressor: ${e.message}")
+            }
         }
 
         audioRecord?.startRecording()
@@ -95,19 +136,34 @@ class LiveAudioManager(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Recording started")
+        Log.d(TAG, "Recording started (AEC mode)")
     }
 
     fun stopRecording() {
         _isRecording.value = false
         recordJob?.cancel()
         recordJob = null
+
+        // Release audio effects
+        try {
+            echoCanceler?.release()
+        } catch (_: Exception) {}
+        echoCanceler = null
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Exception) {}
+        noiseSuppressor = null
+
         try {
             audioRecord?.stop()
             audioRecord?.release()
         } catch (_: Exception) {}
         audioRecord = null
         onAudioChunk = null
+
+        // Reset audio mode
+        audioManager.mode = AudioManager.MODE_NORMAL
+
         Log.d(TAG, "Recording stopped")
     }
 
@@ -122,6 +178,8 @@ class LiveAudioManager(private val context: Context) {
 
     /**
      * Start the playback loop — drains the playbackQueue and writes to AudioTrack.
+     * Uses USAGE_VOICE_COMMUNICATION so the AEC pipeline can reference this output
+     * for echo cancellation.
      */
     fun startPlayback() {
         val bufferSize = AudioTrack.getMinBufferSize(OUTPUT_SAMPLE_RATE, CHANNEL_OUT, ENCODING)
@@ -130,7 +188,7 @@ class LiveAudioManager(private val context: Context) {
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -158,7 +216,7 @@ class LiveAudioManager(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Playback started")
+        Log.d(TAG, "Playback started (voice communication mode)")
     }
 
     fun stopPlayback() {

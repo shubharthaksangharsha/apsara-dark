@@ -236,8 +236,10 @@ export class GeminiLiveSession {
           // Text data
           if (part.text) {
             if (part.thought) {
-              // This is a thought/reasoning part, not regular output
-              this.callbacks.onThought?.({ text: part.text });
+              // Only forward thoughts if includeThoughts is enabled
+              if (this.config.includeThoughts) {
+                this.callbacks.onThought?.({ text: part.text });
+              }
             } else {
               this.callbacks.onTextData?.({ text: part.text });
             }
