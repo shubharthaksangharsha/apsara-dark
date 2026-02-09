@@ -9,6 +9,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.data.MockData
 import com.shubharthak.apsaradark.live.ActiveSpeaker
+import com.shubharthak.apsaradark.live.EmbeddedToolCall
 import com.shubharthak.apsaradark.live.LiveMessage
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.components.*
@@ -286,7 +289,8 @@ private fun LiveModeContent(
     val visibleMessages = messages.filter { msg ->
         when (msg.role) {
             LiveMessage.Role.USER -> showInput
-            LiveMessage.Role.APSARA -> showOutput
+            LiveMessage.Role.APSARA -> showOutput || msg.toolCalls.isNotEmpty()
+            LiveMessage.Role.TOOL_CALL -> false  // No longer shown as separate items
         }
     }
 
@@ -363,8 +367,10 @@ private fun LiveModeContent(
                             text = message.text,
                             isStreaming = message.isStreaming,
                             thought = message.thought,
+                            toolCalls = message.toolCalls,
                             palette = palette
                         )
+                        else -> { /* TOOL_CALL no longer rendered as separate items */ }
                     }
                 }
             }
@@ -407,6 +413,7 @@ private fun ApsaraBubble(
     text: String,
     isStreaming: Boolean,
     thought: String?,
+    toolCalls: List<EmbeddedToolCall> = emptyList(),
     palette: ApsaraColorPalette
 ) {
     var thoughtsExpanded by remember { mutableStateOf(false) }
@@ -416,7 +423,7 @@ private fun ApsaraBubble(
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 6.dp)
     ) {
-        // Collapsible "Thoughts" section — shown ABOVE the main text
+        // Collapsible "Thoughts" section — shown ABOVE tool calls and main text
         if (!thought.isNullOrBlank()) {
             Row(
                 modifier = Modifier
@@ -450,14 +457,156 @@ private fun ApsaraBubble(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
+        // Embedded tool call cards — shown after thoughts, before main text
+        if (toolCalls.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                toolCalls.forEach { tc ->
+                    ToolCallCard(
+                        toolName = tc.name,
+                        toolStatus = tc.status,
+                        toolMode = tc.mode,
+                        toolResult = tc.result,
+                        palette = palette
+                    )
+                }
+            }
+            if (text.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+
         // Main text — plain, no bubble
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            color = palette.textPrimary,
-            lineHeight = 22.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
+        if (text.isNotBlank()) {
+            Text(
+                text = text,
+                fontSize = 15.sp,
+                color = palette.textPrimary,
+                lineHeight = 22.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+// ─── Tool Call card — shown inline inside ApsaraBubble ──────────────────────
+
+@Composable
+private fun ToolCallCard(
+    toolName: String,
+    toolStatus: LiveMessage.ToolStatus,
+    toolMode: String,
+    toolResult: String?,
+    palette: ApsaraColorPalette
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val displayName = toolName
+        .replace("_", " ")
+        .replaceFirstChar { it.uppercase() }
+
+    val isCompleted = toolStatus == LiveMessage.ToolStatus.COMPLETED
+    val isRunning = toolStatus == LiveMessage.ToolStatus.RUNNING
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.surfaceContainer)
+                .border(
+                    width = 0.5.dp,
+                    color = if (isCompleted) palette.accent.copy(alpha = 0.3f)
+                            else palette.textTertiary.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable(enabled = isCompleted && !toolResult.isNullOrBlank()) {
+                    expanded = !expanded
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Status icon
+            if (isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = palette.accent,
+                    strokeWidth = 2.dp
+                )
+            } else if (isCompleted) {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = "Completed",
+                    tint = palette.accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // Tool name + mode
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary
+                )
+                Text(
+                    text = if (isRunning) {
+                        if (toolMode == "async") "Running (async)…" else "Running…"
+                    } else {
+                        if (toolMode == "async") "Completed · async" else "Completed · sync"
+                    },
+                    fontSize = 11.sp,
+                    color = palette.textTertiary
+                )
+            }
+
+            // Expand hint when result available
+            if (isCompleted && !toolResult.isNullOrBlank()) {
+                Text(
+                    text = if (expanded) "▾" else "▸",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary
+                )
+            }
+        }
+
+        // Expandable result JSON
+        AnimatedVisibility(
+            visible = expanded && isCompleted && !toolResult.isNullOrBlank(),
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+        ) {
+            val formattedResult = try {
+                toolResult
+                    ?.replace(",\"", ",\n  \"")
+                    ?.replace("{\"", "{\n  \"")
+                    ?.replace("}", "\n}")
+                    ?.replace("\\\"", "\"")
+                    ?: ""
+            } catch (_: Exception) { toolResult ?: "" }
+
+            Text(
+                text = formattedResult,
+                fontSize = 11.sp,
+                color = palette.textTertiary,
+                lineHeight = 16.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.surface)
+                    .border(
+                        0.5.dp,
+                        palette.textTertiary.copy(alpha = 0.1f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .padding(12.dp)
+            )
+        }
     }
 }
 

@@ -59,6 +59,16 @@ class LiveWebSocketClient {
     private val _error = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val error = _error.asSharedFlow()
 
+    // Tool call events: list of {name, id} when Gemini invokes tools
+    data class ToolCallEvent(val name: String, val id: String)
+    private val _toolCall = MutableSharedFlow<List<ToolCallEvent>>(extraBufferCapacity = 16)
+    val toolCall = _toolCall.asSharedFlow()
+
+    // Tool result events: list of {id, name, result JSON, mode}
+    data class ToolResultEvent(val id: String, val name: String, val result: String, val mode: String)
+    private val _toolResults = MutableSharedFlow<List<ToolResultEvent>>(extraBufferCapacity = 16)
+    val toolResults = _toolResults.asSharedFlow()
+
     /**
      * Connect WebSocket and immediately send "connect" with the live config.
      */
@@ -148,6 +158,39 @@ class LiveWebSocketClient {
                     val msg = json.get("message")?.asString ?: "Unknown error"
                     Log.e(TAG, "Server error: $msg")
                     _error.tryEmit(msg)
+                }
+                "tool_call" -> {
+                    // Backend sends: { type: "tool_call", functionCalls: [{name, id, args}] }
+                    val calls = json.getAsJsonArray("functionCalls")
+                    if (calls != null) {
+                        val events = calls.map { el ->
+                            val obj = el.asJsonObject
+                            ToolCallEvent(
+                                name = obj.get("name")?.asString ?: "unknown",
+                                id = obj.get("id")?.asString ?: ""
+                            )
+                        }
+                        Log.d(TAG, "Tool call: ${events.map { it.name }}")
+                        _toolCall.tryEmit(events)
+                    }
+                }
+                "tool_results" -> {
+                    // Backend sends: { type: "tool_results", results: [{id, name, response: {...}}], mode: "sync"|"async" }
+                    val mode = json.get("mode")?.asString ?: "sync"
+                    val results = json.getAsJsonArray("results")
+                    if (results != null) {
+                        val events = results.map { el ->
+                            val obj = el.asJsonObject
+                            ToolResultEvent(
+                                id = obj.get("id")?.asString ?: "",
+                                name = obj.get("name")?.asString ?: "unknown",
+                                result = obj.get("response")?.toString() ?: "{}",
+                                mode = mode
+                            )
+                        }
+                        Log.d(TAG, "Tool results ($mode): ${events.map { it.name }}")
+                        _toolResults.tryEmit(events)
+                    }
                 }
             }
         } catch (e: Exception) {

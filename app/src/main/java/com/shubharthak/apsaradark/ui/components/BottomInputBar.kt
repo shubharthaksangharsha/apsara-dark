@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.live.ActiveSpeaker
@@ -369,10 +370,11 @@ private fun LiveModeBar(
                 }
             }
 
-            // Audio output device picker dropdown
+            // Audio output device picker dropdown — offset left so it doesn't clip off-screen
             DropdownMenu(
                 expanded = showAudioDeviceMenu,
                 onDismissRequest = { showAudioDeviceMenu = false },
+                offset = DpOffset(x = (-120).dp, y = 0.dp),
                 modifier = Modifier.background(palette.surfaceContainer)
             ) {
                 DropdownMenuItem(

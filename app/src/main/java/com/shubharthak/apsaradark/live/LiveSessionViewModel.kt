@@ -20,10 +20,30 @@ data class LiveMessage(
     val role: Role,
     val text: String,
     val isStreaming: Boolean = false,
-    val thought: String? = null  // Collapsible thought text, if any
+    val thought: String? = null,
+    // Tool call fields (only for TOOL_CALL role — kept for backward compat)
+    val toolName: String? = null,
+    val toolCallId: String? = null,
+    val toolStatus: ToolStatus = ToolStatus.NONE,
+    val toolMode: String? = null,        // "sync" or "async"
+    val toolResult: String? = null,       // JSON result string, shown on tap
+    // Embedded tool calls shown inside APSARA messages
+    val toolCalls: List<EmbeddedToolCall> = emptyList()
 ) {
-    enum class Role { USER, APSARA }
+    enum class Role { USER, APSARA, TOOL_CALL }
+    enum class ToolStatus { NONE, RUNNING, COMPLETED, ERROR }
 }
+
+/**
+ * Represents a tool call embedded within an Apsara message.
+ */
+data class EmbeddedToolCall(
+    val name: String,
+    val id: String,
+    val status: LiveMessage.ToolStatus = LiveMessage.ToolStatus.RUNNING,
+    val mode: String = "sync",     // "sync" or "async"
+    val result: String? = null
+)
 
 /**
  * Who is currently "talking" in the live session.
@@ -77,6 +97,8 @@ class LiveSessionViewModel(
     private var currentInputBuffer = StringBuilder()
     // Accumulator for thoughts (attached to next Apsara message)
     private var currentThoughtBuffer = StringBuilder()
+    // Accumulator for tool calls (attached to next/current Apsara message)
+    private val pendingToolCalls = mutableListOf<EmbeddedToolCall>()
 
     init {
         // Observe WebSocket state changes
@@ -156,11 +178,16 @@ class LiveSessionViewModel(
             val fullText = currentOutputBuffer.toString().trim()
             if (fullText.isNotEmpty()) {
                 val thoughtText = currentThoughtBuffer.toString().trim().ifEmpty { null }
+                val embeddedTools = pendingToolCalls.toList()
                 val lastApsaraIdx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
                 if (lastApsaraIdx >= 0) {
-                    messages[lastApsaraIdx] = LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true, thought = thoughtText)
+                    messages[lastApsaraIdx] = messages[lastApsaraIdx].copy(
+                        text = fullText,
+                        thought = thoughtText,
+                        toolCalls = embeddedTools
+                    )
                 } else {
-                    messages.add(LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true, thought = thoughtText))
+                    messages.add(LiveMessage(LiveMessage.Role.APSARA, fullText, isStreaming = true, thought = thoughtText, toolCalls = embeddedTools))
                 }
             }
         }.launchIn(viewModelScope)
@@ -168,6 +195,89 @@ class LiveSessionViewModel(
         // Thoughts — model's reasoning process (accumulate, attach to next Apsara message)
         wsClient.thought.onEach { text ->
             currentThoughtBuffer.append(text)
+        }.launchIn(viewModelScope)
+
+        // Tool calls — accumulate as pending, attach to next/current Apsara message
+        wsClient.toolCall.onEach { calls ->
+            for (call in calls) {
+                // Determine if this tool is async or sync from settings
+                val isAsync = liveSettings.let {
+                    val modes = it.buildConfigMap()["toolAsyncModes"]
+                    (modes as? Map<*, *>)?.get(call.name) == true
+                }
+                pendingToolCalls.add(
+                    EmbeddedToolCall(
+                        name = call.name,
+                        id = call.id,
+                        status = LiveMessage.ToolStatus.RUNNING,
+                        mode = if (isAsync) "async" else "sync"
+                    )
+                )
+            }
+            // Update the current streaming Apsara message with the new tool calls,
+            // or create a placeholder Apsara message to hold them
+            val lastApsaraIdx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
+            if (lastApsaraIdx >= 0) {
+                messages[lastApsaraIdx] = messages[lastApsaraIdx].copy(
+                    toolCalls = pendingToolCalls.toList()
+                )
+            } else {
+                // No Apsara message yet — add a placeholder with empty text
+                val thoughtText = currentThoughtBuffer.toString().trim().ifEmpty { null }
+                messages.add(
+                    LiveMessage(
+                        LiveMessage.Role.APSARA,
+                        text = "",
+                        isStreaming = true,
+                        thought = thoughtText,
+                        toolCalls = pendingToolCalls.toList()
+                    )
+                )
+            }
+        }.launchIn(viewModelScope)
+
+        // Tool results — update the matching embedded tool call to "completed"
+        wsClient.toolResults.onEach { results ->
+            for (result in results) {
+                // Update in pending buffer
+                val pendingIdx = pendingToolCalls.indexOfFirst { it.id == result.id }
+                if (pendingIdx >= 0) {
+                    pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
+                        status = LiveMessage.ToolStatus.COMPLETED,
+                        result = result.result,
+                        mode = result.mode
+                    )
+                } else {
+                    // Wasn't in pending — add it
+                    pendingToolCalls.add(
+                        EmbeddedToolCall(
+                            name = result.name,
+                            id = result.id,
+                            status = LiveMessage.ToolStatus.COMPLETED,
+                            mode = result.mode,
+                            result = result.result
+                        )
+                    )
+                }
+            }
+            // Update the Apsara message that contains these tool calls
+            val lastApsaraIdx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> results.any { r -> r.id == tc.id } }
+            }
+            if (lastApsaraIdx >= 0) {
+                val updatedCalls = messages[lastApsaraIdx].toolCalls.map { tc ->
+                    val matchingResult = results.find { it.id == tc.id }
+                    if (matchingResult != null) {
+                        tc.copy(
+                            status = LiveMessage.ToolStatus.COMPLETED,
+                            result = matchingResult.result,
+                            mode = matchingResult.mode
+                        )
+                    } else tc
+                }
+                messages[lastApsaraIdx] = messages[lastApsaraIdx].copy(toolCalls = updatedCalls)
+            }
         }.launchIn(viewModelScope)
 
         // Errors
@@ -178,14 +288,19 @@ class LiveSessionViewModel(
     }
 
     private fun finalizeOutputMessage() {
-        // Finalize the current streaming Apsara message and attach any thoughts
+        // Finalize the current streaming Apsara message and attach any thoughts + tool calls
         val idx = messages.indexOfLast { it.role == LiveMessage.Role.APSARA && it.isStreaming }
         if (idx >= 0) {
             val thoughtText = currentThoughtBuffer.toString().trim().ifEmpty { null }
-            messages[idx] = messages[idx].copy(isStreaming = false, thought = thoughtText)
+            messages[idx] = messages[idx].copy(
+                isStreaming = false,
+                thought = thoughtText,
+                toolCalls = pendingToolCalls.toList()
+            )
         }
         currentOutputBuffer.clear()
         currentThoughtBuffer.clear()
+        pendingToolCalls.clear()
         outputTranscript = ""
 
         // Also finalize any streaming user message
@@ -211,18 +326,24 @@ class LiveSessionViewModel(
         currentInputBuffer.clear()
         currentOutputBuffer.clear()
         currentThoughtBuffer.clear()
+        pendingToolCalls.clear()
         activeSpeaker = ActiveSpeaker.NONE
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
     }
 
     private fun startAudio() {
-        audioManager.startPlayback()
+        // IMPORTANT: Start recording FIRST — this sets MODE_IN_COMMUNICATION on the
+        // AudioManager and obtains the shared audio session ID from AudioRecord.
+        // Then start playback — the AudioTrack will be created with the shared session
+        // while the AudioManager is already in communication mode, so isSpeakerphoneOn
+        // routing (earpiece/loudspeaker/bluetooth) will take effect correctly.
         if (audioManager.hasPermission()) {
             audioManager.startRecording { pcmChunk ->
                 wsClient.sendAudio(pcmChunk)
             }
         }
+        audioManager.startPlayback()
     }
 
     fun stopLive() {
