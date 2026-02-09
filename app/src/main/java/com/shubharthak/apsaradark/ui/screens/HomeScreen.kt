@@ -54,6 +54,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+    var showLiveAttachmentSheet by remember { mutableStateOf(false) }
 
     val themeManager = LocalThemeManager.current
     val palette = themeManager.currentTheme
@@ -174,7 +175,13 @@ fun HomeScreen(
                     onValueChange = { inputText = it },
                     onSend = { inputText = "" },
                     onMicClick = { /* TODO: voice-to-text input */ },
-                    onAttachClick = { /* TODO: attach menu */ },
+                    onAttachClick = {
+                        if (isLiveActive) {
+                            showLiveAttachmentSheet = true
+                        } else {
+                            // TODO: normal mode attach menu
+                        }
+                    },
                     onLiveClick = { startLiveWithPermission() },
                     onLiveEnd = { liveViewModel.stopLive() },
                     onLiveMuteToggle = { liveViewModel.toggleMute() },
@@ -271,6 +278,16 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Live mode attachment bottom sheet
+    if (showLiveAttachmentSheet) {
+        AttachmentBottomSheet(
+            onDismiss = { showLiveAttachmentSheet = false },
+            onCameraClick = { /* TODO: open camera for live video */ },
+            onPhotosClick = { /* TODO: pick photo to send */ },
+            onFilesClick = { /* TODO: pick file to send */ }
+        )
     }
 }
 
