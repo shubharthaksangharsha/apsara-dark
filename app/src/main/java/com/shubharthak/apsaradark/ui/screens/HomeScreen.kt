@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.data.MockData
 import com.shubharthak.apsaradark.live.ActiveSpeaker
@@ -48,6 +47,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    liveViewModel: LiveSessionViewModel,
     openDrawerOnReturn: Boolean = false,
     onNavigateToSettings: () -> Unit = {},
     onNavigateToPlugins: () -> Unit = {}
@@ -63,10 +63,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val liveSettings = LocalLiveSettings.current
 
-    // LiveSessionViewModel — scoped to this screen
-    val liveViewModel: LiveSessionViewModel = viewModel(
-        factory = LiveSessionViewModel.Factory(context, liveSettings)
-    )
+    // LiveSessionViewModel — now hoisted to Activity scope via Navigation.kt
+    // Survives navigation between Home, Settings, and Plugins screens.
 
     // Mic permission launcher
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -79,8 +77,27 @@ fun HomeScreen(
         }
     }
 
+    // Notification permission launcher (Android 13+) — for foreground service notification
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // Whether granted or not, proceed with starting live
+        // The foreground service will work without notification permission,
+        // the notification just won't be visible
+    }
+
     // Helper to start live with permission check
     fun startLiveWithPermission() {
+        // Request notification permission on Android 13+ (non-blocking)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasNotifPermission = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasNotifPermission) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         val hasMicPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED

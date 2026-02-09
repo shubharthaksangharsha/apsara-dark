@@ -333,7 +333,7 @@ class LiveSessionViewModel(
                     messages.add(
                         LiveMessage(
                             role = LiveMessage.Role.APSARA,
-                            text = "🔒 Session resumption active",
+                            text = "✦ Session resumption active",
                             isStreaming = false
                         )
                     )
@@ -351,6 +351,12 @@ class LiveSessionViewModel(
                     isStreaming = false
                 )
             )
+        }.launchIn(viewModelScope)
+
+        // Observe "stop live" requests from the foreground service notification
+        LiveSessionBridge.stopRequested.onEach {
+            Log.d(TAG, "Stop live requested via notification")
+            stopLive()
         }.launchIn(viewModelScope)
     }
 
@@ -401,6 +407,13 @@ class LiveSessionViewModel(
         shownResumptionReady = false
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
+
+        // Start foreground service to keep session alive in background
+        try {
+            LiveSessionService.start(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start foreground service: ${e.message}")
+        }
     }
 
     private fun startAudio() {
@@ -424,6 +437,13 @@ class LiveSessionViewModel(
         liveState = LiveState.IDLE
         isMuted = false
         activeSpeaker = ActiveSpeaker.NONE
+
+        // Stop foreground service
+        try {
+            LiveSessionService.stop(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop foreground service: ${e.message}")
+        }
     }
 
     fun toggleMute() {

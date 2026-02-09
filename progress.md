@@ -630,3 +630,108 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── live/LiveSessionViewModel.kt      — GoAway observer, improved reconnection detection
 └── ui/screens/SettingsScreen.kt      — Session Resumption toggle, updated descriptions
 ```
+
+---
+
+## v3.0.0 — Background Foreground Service + Connection Stability (Feb 9, 2026)
+
+### What was done
+
+#### 1. Fixed "Live error: Software caused connection abort"
+- **Root cause**: The `LiveSessionViewModel` was scoped to `HomeScreen` composable. When navigating to Settings or Plugins, the NavHost could lose reference to the ViewModel, and more critically, when the app went to background, Android's power management would kill the WebSocket connection and audio resources.
+- **Fix — ViewModel hoisting**: Moved `LiveSessionViewModel` creation from `HomeScreen` to `AppNavigation` (Activity-level scope). The ViewModel now survives navigation between Home ↔ Settings ↔ Plugins without being destroyed or recreated.
+- **Fix — Foreground Service**: Created `LiveSessionService` to keep the app process alive in background with a persistent notification.
+
+#### 2. Foreground Service for Live Mode (`LiveSessionService`)
+- **New file**: `LiveSessionService.kt` — A foreground service that:
+  - Shows a persistent "Apsara is listening…" notification while live mode is active
+  - Uses `FOREGROUND_SERVICE_TYPE_MICROPHONE | MEDIA_PLAYBACK` for Android 14+
+  - Includes an "End Session" action in the notification to stop live from the shade
+  - Auto-starts when `startLive()` is called, auto-stops on `stopLive()`
+- **New file**: `StopLiveReceiver.kt` — BroadcastReceiver to handle "End Session" notification action
+- **New file**: `LiveSessionBridge.kt` — Singleton SharedFlow bridge for notification → ViewModel communication
+- **Permissions added** to AndroidManifest:
+  - `FOREGROUND_SERVICE` — Required for all foreground services
+  - `FOREGROUND_SERVICE_MICROPHONE` — Required on Android 14+ for mic access in foreground service
+  - `FOREGROUND_SERVICE_MEDIA_PLAYBACK` — Required on Android 14+ for audio playback in foreground service
+  - `POST_NOTIFICATIONS` — Required on Android 13+ to show notifications
+  - `WAKE_LOCK` — Keeps CPU alive during background operation
+
+#### 3. Wake Lock + WiFi Lock
+- Added `PowerManager.PARTIAL_WAKE_LOCK` to `LiveAudioManager` — prevents CPU from sleeping during live session
+- Added `WifiManager.WifiLock` — prevents WiFi from going to low-power mode, keeping the WebSocket connection stable
+- Both locks are acquired when recording starts and released when recording stops
+
+#### 4. Session Resumption Icon Fix
+- Replaced `🔒` (lock) icon with `✦` (four-pointed star) in the "Session resumption active" indicator
+- Better fits the app's visual theme and doesn't imply security/encryption
+
+#### 5. Notification Permission Handling
+- Added `POST_NOTIFICATIONS` permission request on Android 13+ in `HomeScreen`
+- Non-blocking — if user denies, live mode still works (notification just won't show)
+
+### Architecture
+
+```
+com.shubharthak.apsaradark.live/
+├── LiveSessionService.kt     — Foreground service (persistent notification + process keep-alive)
+├── LiveSessionBridge.kt      — SharedFlow bridge for notification → ViewModel events
+├── StopLiveReceiver.kt       — BroadcastReceiver for "End Session" notification action
+├── LiveSessionViewModel.kt   — Now starts/stops foreground service + observes stop bridge
+├── LiveWebSocketClient.kt    — (unchanged)
+└── LiveAudioManager.kt       — Added wake lock + WiFi lock for background stability
+
+com.shubharthak.apsaradark.ui/
+├── navigation/Navigation.kt  — ViewModel hoisted to Activity scope (survives navigation)
+└── screens/HomeScreen.kt     — Accepts ViewModel as parameter, notification permission
+```
+
+### Flow: Background Persistence
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Live Session Lifecycle                          │
+│                                                                 │
+│  User taps "Talk" → startLive()                                 │
+│    1. WebSocket connects to backend                             │
+│    2. Foreground service starts → persistent notification        │
+│    3. Wake lock + WiFi lock acquired                            │
+│    4. Audio recording + playback begin                          │
+│                                                                 │
+│  User presses Home / switches app:                              │
+│    → Foreground service keeps process alive ✓                   │
+│    → Wake lock keeps CPU active ✓                               │
+│    → WiFi lock keeps network stable ✓                           │
+│    → WebSocket stays connected ✓                                │
+│    → Audio continues recording/playing ✓                        │
+│                                                                 │
+│  User navigates to Settings/Plugins:                            │
+│    → ViewModel hoisted to Activity scope ✓                      │
+│    → Session survives navigation ✓                              │
+│    → Audio continues in background ✓                            │
+│                                                                 │
+│  User taps "End Session" (notification or in-app):              │
+│    1. Audio recording + playback stop                           │
+│    2. WebSocket disconnects                                     │
+│    3. Wake lock + WiFi lock released                            │
+│    4. Foreground service stops → notification removed            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Files changed
+
+```
+NEW:
+app/src/main/java/com/shubharthak/apsaradark/live/
+├── LiveSessionService.kt             — Foreground service
+├── LiveSessionBridge.kt              — Notification → ViewModel bridge
+└── StopLiveReceiver.kt               — "End Session" broadcast receiver
+
+MODIFIED:
+app/src/main/AndroidManifest.xml      — Service, receiver, permissions
+app/src/main/java/com/shubharthak/apsaradark/
+├── live/LiveSessionViewModel.kt      — Service start/stop, bridge observer, icon fix
+├── live/LiveAudioManager.kt          — Wake lock + WiFi lock
+├── ui/navigation/Navigation.kt       — ViewModel hoisted to Activity scope
+└── ui/screens/HomeScreen.kt          — Accept ViewModel param, notification permission
+```

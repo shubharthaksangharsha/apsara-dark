@@ -1,10 +1,14 @@
 package com.shubharthak.apsaradark.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.shubharthak.apsaradark.data.LocalLiveSettings
+import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.screens.HomeScreen
 import com.shubharthak.apsaradark.ui.screens.PluginsScreen
 import com.shubharthak.apsaradark.ui.screens.SettingsScreen
@@ -19,6 +23,16 @@ object Routes {
 fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
+    val context = LocalContext.current
+    val liveSettings = LocalLiveSettings.current
+
+    // ── Hoist LiveSessionViewModel to Activity scope ──
+    // This ensures the live session survives navigation between screens.
+    // Previously scoped to HomeScreen — destroyed when navigating to Settings/Plugins.
+    val liveViewModel: LiveSessionViewModel = viewModel(
+        factory = LiveSessionViewModel.Factory(context, liveSettings)
+    )
+
     NavHost(
         navController = navController,
         startDestination = Routes.HOME
@@ -32,6 +46,7 @@ fun AppNavigation(
             }
 
             HomeScreen(
+                liveViewModel = liveViewModel,
                 openDrawerOnReturn = openDrawer,
                 onNavigateToSettings = {
                     navController.navigate(Routes.SETTINGS)

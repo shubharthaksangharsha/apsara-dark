@@ -12,7 +12,9 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
@@ -95,6 +97,11 @@ class LiveAudioManager(private val context: Context) {
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
     @Suppress("DEPRECATION")
     private var wasSpeakerphoneOn: Boolean = false
+
+    // Wake lock + WiFi lock to prevent CPU/network sleep during live session
+    private var wakeLock: PowerManager.WakeLock? = null
+    @Suppress("DEPRECATION")
+    private var wifiLock: WifiManager.WifiLock? = null
 
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -258,6 +265,9 @@ class LiveAudioManager(private val context: Context) {
         _isRecording.value = true
         _isMuted.value = false
 
+        // Acquire wake lock + wifi lock to keep CPU/network alive in background
+        acquireWakeLocks()
+
         recordJob = scope.launch {
             val buffer = ByteArray(bufferSize)
             while (isActive && _isRecording.value) {
@@ -307,6 +317,9 @@ class LiveAudioManager(private val context: Context) {
         @Suppress("DEPRECATION")
         audioManager.isSpeakerphoneOn = wasSpeakerphoneOn
         audioManager.mode = previousAudioMode
+
+        // Release wake lock + wifi lock
+        releaseWakeLocks()
 
         Log.d(TAG, "Recording stopped")
     }
@@ -423,7 +436,60 @@ class LiveAudioManager(private val context: Context) {
     fun release() {
         stopRecording()
         stopPlayback()
+        releaseWakeLocks()
         scope.cancel()
+    }
+
+    /**
+     * Acquire a partial wake lock (CPU) and WiFi lock to prevent
+     * the system from sleeping the CPU or dropping WiFi while a
+     * live session is active. This is critical for background operation.
+     */
+    @Suppress("DEPRECATION")
+    private fun acquireWakeLocks() {
+        try {
+            if (wakeLock == null) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "ApsaraDark:LiveSession"
+                )
+                wakeLock?.acquire(60 * 60 * 1000L) // 1 hour max
+                Log.d(TAG, "Wake lock acquired")
+            }
+            if (wifiLock == null) {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ApsaraDark:LiveSession")
+                wifiLock?.acquire()
+                Log.d(TAG, "WiFi lock acquired")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake/wifi lock: ${e.message}")
+        }
+    }
+
+    /**
+     * Release wake lock and WiFi lock.
+     */
+    private fun releaseWakeLocks() {
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                Log.d(TAG, "Wake lock released")
+            }
+            wakeLock = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release wake lock: ${e.message}")
+        }
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
+                Log.d(TAG, "WiFi lock released")
+            }
+            wifiLock = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release WiFi lock: ${e.message}")
+        }
     }
 
     /**
