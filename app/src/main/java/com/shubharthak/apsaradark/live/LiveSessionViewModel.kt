@@ -111,6 +111,9 @@ class LiveSessionViewModel(
     private var hasBeenConnected = false
     private var hasResumptionHandle = false
     private var shownResumptionReady = false
+    // Prevent duplicate "Session resumed" messages during GoAway reconnect cycles
+    private var pendingGoAwayReconnect = false
+    private var goAwayMessageIndex = -1
 
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
@@ -138,24 +141,32 @@ class LiveSessionViewModel(
                 // Detect reconnection (connected again after being connected before)
                 if (hasBeenConnected && hasResumptionHandle) {
                     sessionResumed = true
-                    messages.add(
-                        LiveMessage(
-                            role = LiveMessage.Role.APSARA,
-                            text = "⟳ Session resumed — continuing from where we left off",
-                            isStreaming = false
-                        )
-                    )
+                    // Only show "Session resumed" once per GoAway event
+                    if (pendingGoAwayReconnect) {
+                        pendingGoAwayReconnect = false
+                        // Update the GoAway placeholder message in-place
+                        if (goAwayMessageIndex in messages.indices) {
+                            messages[goAwayMessageIndex] = LiveMessage(
+                                role = LiveMessage.Role.APSARA,
+                                text = "Session resumed",
+                                isStreaming = false
+                            )
+                        }
+                        goAwayMessageIndex = -1
+                    }
                 }
                 hasBeenConnected = true
                 startAudio()
             }
 
-            // When disconnected or errored, stop audio immediately
+            // When disconnected or errored, stop audio — but not during GoAway reconnects
             if (wsState == LiveWebSocketClient.ConnectionState.DISCONNECTED ||
                 wsState == LiveWebSocketClient.ConnectionState.ERROR) {
-                audioManager.stopRecording()
-                audioManager.stopPlayback()
-                activeSpeaker = ActiveSpeaker.NONE
+                if (!pendingGoAwayReconnect) {
+                    audioManager.stopRecording()
+                    audioManager.stopPlayback()
+                    activeSpeaker = ActiveSpeaker.NONE
+                }
             }
         }.launchIn(viewModelScope)
 
@@ -356,13 +367,18 @@ class LiveSessionViewModel(
         // GoAway — Gemini connection will terminate soon, backend will auto-reconnect
         wsClient.goAway.onEach { event ->
             Log.w(TAG, "GoAway received: timeLeft=${event.timeLeft}")
-            messages.add(
-                LiveMessage(
-                    role = LiveMessage.Role.APSARA,
-                    text = "⏳ Connection refreshing — reconnecting seamlessly…",
-                    isStreaming = false
+            // Only add one message per GoAway; mark that reconnect is expected
+            if (!pendingGoAwayReconnect) {
+                pendingGoAwayReconnect = true
+                messages.add(
+                    LiveMessage(
+                        role = LiveMessage.Role.APSARA,
+                        text = "Reconnecting...",
+                        isStreaming = false
+                    )
                 )
-            )
+                goAwayMessageIndex = messages.lastIndex
+            }
         }.launchIn(viewModelScope)
 
         // Observe "stop live" requests from the foreground service notification
@@ -423,6 +439,8 @@ class LiveSessionViewModel(
         hasBeenConnected = false
         hasResumptionHandle = false
         shownResumptionReady = false
+        pendingGoAwayReconnect = false
+        goAwayMessageIndex = -1
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
 

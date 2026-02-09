@@ -17,11 +17,7 @@ import kotlinx.coroutines.flow.combine
  * Foreground service that keeps the Apsara Dark live session alive
  * when the app is in the background or the screen is off.
  *
- * Shows a persistent notification with:
- * - Dynamic status text (who is speaking / listening / muted)
- * - Visual indicators using emoji waveforms
- * - Mute toggle action
- * - End session action
+ * Shows a simple persistent notification with mute and end actions.
  */
 class LiveSessionService : Service() {
 
@@ -51,7 +47,6 @@ class LiveSessionService : Service() {
     // Track last notification state to avoid unnecessary rebuilds
     private var lastSpeaker: ActiveSpeaker = ActiveSpeaker.NONE
     private var lastMuted: Boolean = false
-    private var waveIndex: Int = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -108,10 +103,6 @@ class LiveSessionService : Service() {
             ) { speaker, muted ->
                 Pair(speaker, muted)
             }.collect { (speaker, muted) ->
-                // Animate waveform: cycle through frames when someone is speaking
-                if (speaker != ActiveSpeaker.NONE) {
-                    waveIndex = (waveIndex + 1) % WAVE_FRAMES.size
-                }
                 // Only rebuild if state actually changed
                 if (speaker != lastSpeaker || muted != lastMuted) {
                     lastSpeaker = speaker
@@ -139,29 +130,23 @@ class LiveSessionService : Service() {
 
         val (title, contentText, subText) = when {
             isMuted -> Triple(
-                "Apsara Dark — Muted",
-                "🔇 Microphone muted · Tap to unmute",
-                "Mic off"
+                "Apsara Dark",
+                "Microphone muted",
+                "Muted"
             )
-            speaker == ActiveSpeaker.APSARA -> {
-                val wave = WAVE_FRAMES[waveIndex % WAVE_FRAMES.size]
-                Triple(
-                    "Apsara Dark — Speaking",
-                    "$wave Apsara is speaking…",
-                    "Apsara"
-                )
-            }
-            speaker == ActiveSpeaker.USER -> {
-                val wave = WAVE_FRAMES_USER[waveIndex % WAVE_FRAMES_USER.size]
-                Triple(
-                    "Apsara Dark — Listening",
-                    "$wave You are speaking…",
-                    "Listening"
-                )
-            }
+            speaker == ActiveSpeaker.APSARA -> Triple(
+                "Apsara Dark",
+                "Apsara is speaking",
+                "Speaking"
+            )
+            speaker == ActiveSpeaker.USER -> Triple(
+                "Apsara Dark",
+                "Listening to you",
+                "Listening"
+            )
             else -> Triple(
-                "Apsara Dark — Live",
-                "✦ Listening for your voice…",
+                "Apsara Dark",
+                "Live session active",
                 "Ready"
             )
         }
@@ -199,7 +184,6 @@ class LiveSessionService : Service() {
             .setShowWhen(false)
             .addAction(muteIcon, muteLabel, muteIntent)
             .addAction(R.drawable.ic_notif_stop, "End", stopIntent)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .build()
     }
 
@@ -224,28 +208,3 @@ class LiveSessionService : Service() {
 
 const val ACTION_STOP_LIVE = "com.shubharthak.apsaradark.STOP_LIVE"
 const val ACTION_MUTE_TOGGLE = "com.shubharthak.apsaradark.MUTE_TOGGLE"
-
-// ── Animated waveform frames for notification text ──────────────
-// These cycle through to give the impression of audio activity.
-
-private val WAVE_FRAMES = listOf(
-    "♪ ▁▃▅▇▅▃▁",
-    "♪ ▂▅▇▅▃▁▂",
-    "♪ ▃▇▅▃▁▂▃",
-    "♪ ▅▅▃▁▂▃▅",
-    "♪ ▇▃▁▂▃▅▇",
-    "♪ ▅▁▂▃▅▇▅",
-    "♪ ▃▂▃▅▇▅▃",
-    "♪ ▁▃▅▇▅▃▁"
-)
-
-private val WAVE_FRAMES_USER = listOf(
-    "🎤 ▁▃▅▇▅▃▁",
-    "🎤 ▂▅▇▅▃▁▂",
-    "🎤 ▃▇▅▃▁▂▃",
-    "🎤 ▅▅▃▁▂▃▅",
-    "🎤 ▇▃▁▂▃▅▇",
-    "🎤 ▅▁▂▃▅▇▅",
-    "🎤 ▃▂▃▅▇▅▃",
-    "🎤 ▁▃▅▇▅▃▁"
-)
