@@ -2,6 +2,10 @@ package com.shubharthak.apsaradark.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,6 +103,70 @@ fun HomeScreen(
     LaunchedEffect(liveViewModel.lastError) {
         liveViewModel.lastError?.let { error ->
             Toast.makeText(context, "Live error: $error", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ─── Haptic feedback synced with Apsara's speech transcription ─────
+    val hapticEnabled = liveSettings.hapticFeedback
+    val outputAmplitude by liveViewModel.audioManager.outputAmplitude.collectAsState()
+    val currentActiveSpeaker = liveViewModel.activeSpeaker
+    val outputTranscript = liveViewModel.outputTranscript
+
+    // Remember the vibrator instance once
+    val vibrator = remember {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val mgr = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                mgr?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+        } catch (_: Exception) { null }
+    }
+
+    // Track previous transcript length to detect new words arriving
+    val prevTranscriptLength = remember { mutableStateOf(0) }
+
+    // When output transcript changes (new words from Apsara), pulse vibration
+    LaunchedEffect(outputTranscript) {
+        if (!hapticEnabled) return@LaunchedEffect
+        if (vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
+
+        val newLen = outputTranscript.length
+        val prevLen = prevTranscriptLength.value
+        prevTranscriptLength.value = newLen
+
+        // Only vibrate when new text has actually been added
+        val addedText = if (newLen > prevLen) outputTranscript.substring(prevLen) else ""
+        if (addedText.isBlank()) return@LaunchedEffect
+
+        // Count how many new words arrived in this chunk
+        val newWordCount = addedText.trim().split("\\s+".toRegex()).size
+
+        // Pulse intensity: moderate for short chunks, stronger for longer ones
+        // Duration scales with word count: 1 word = 45ms, 2+ words = up to 100ms
+        val durationMs = (45L + (newWordCount - 1).coerceIn(0, 4) * 15L)
+        val intensity = (100 + (newWordCount - 1).coerceIn(0, 4) * 30).coerceIn(80, 220)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    VibrationEffect.createOneShot(durationMs, intensity)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(durationMs)
+            }
+        } catch (_: Exception) {
+            // Ignore — don't crash for haptic issues
+        }
+    }
+
+    // Reset transcript tracking when Apsara stops speaking
+    LaunchedEffect(currentActiveSpeaker) {
+        if (currentActiveSpeaker != ActiveSpeaker.APSARA) {
+            prevTranscriptLength.value = 0
         }
     }
 

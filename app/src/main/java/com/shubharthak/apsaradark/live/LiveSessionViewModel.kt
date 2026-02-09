@@ -91,6 +91,10 @@ class LiveSessionViewModel(
     var activeSpeaker by mutableStateOf(ActiveSpeaker.NONE)
         private set
 
+    // Session resumption — tracks if current session was resumed from a previous one
+    var sessionResumed by mutableStateOf(false)
+        private set
+
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
     // Accumulator for streaming input transcription
@@ -300,6 +304,22 @@ class LiveSessionViewModel(
             lastError = msg
             Log.e(TAG, "Error: $msg")
         }.launchIn(viewModelScope)
+
+        // Session resumption updates — Gemini is maintaining session state across connections
+        wsClient.sessionResumptionUpdate.onEach { event ->
+            Log.d(TAG, "Session resumption: resumable=${event.resumable}, hasHandle=${event.hasHandle}")
+            if (event.resumable && event.hasHandle && !sessionResumed) {
+                sessionResumed = true
+                // Add a system-like indicator in chat so user knows session was resumed
+                messages.add(
+                    LiveMessage(
+                        role = LiveMessage.Role.APSARA,
+                        text = "⟳ Session resumed — continuing from where we left off",
+                        isStreaming = false
+                    )
+                )
+            }
+        }.launchIn(viewModelScope)
     }
 
     private fun finalizeOutputMessage() {
@@ -343,6 +363,7 @@ class LiveSessionViewModel(
         currentThoughtBuffer.clear()
         pendingToolCalls.clear()
         activeSpeaker = ActiveSpeaker.NONE
+        sessionResumed = false
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
     }

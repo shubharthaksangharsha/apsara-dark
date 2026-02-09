@@ -66,7 +66,12 @@ class LiveSettingsManager(context: Context) {
     var toolServerInfoAsync by mutableStateOf(prefs.getBoolean("tool_server_info_async", false))
         private set
 
+    // General Settings
+    var hapticFeedback by mutableStateOf(prefs.getBoolean("haptic_feedback", false))
+        private set
+
     // Setters (named updateX to avoid JVM clash with private set)
+    fun updateHapticFeedback(v: Boolean) { hapticFeedback = v; prefs.edit().putBoolean("haptic_feedback", v).apply() }
     fun updateModel(v: String) { model = v; prefs.edit().putString("model", v).apply() }
     fun updateVoice(v: String) { voice = v; prefs.edit().putString("voice", v).apply() }
     fun updateTemperature(v: Float) { temperature = v; prefs.edit().putFloat("temperature", v).apply() }

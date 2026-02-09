@@ -505,3 +505,63 @@ app/src/main/java/com/shubharthak/apsaradark/
 app/src/main/java/com/shubharthak/apsaradark/
 └── ui/screens/HomeScreen.kt                 — showLiveAttachmentSheet state, live-only + button logic
 ```
+
+---
+
+## v2.8.0 — Live Mode Only, General Settings, Haptic Feedback & Session Resumption (Feb 9, 2026)
+
+### What was done
+
+- **Live Mode Only Refactor**:
+  - Removed normal text input mode — app now only shows the input bar in live mode.
+  - "Talk" feature card is the sole entry point to live mode.
+  - Cleaned up `HomeScreen` and `BottomInputBar` to remove all normal mode code and state.
+
+- **General Settings section**:
+  - Added a collapsible "General Settings" section in `SettingsScreen` (before Themes).
+  - Added a **Haptic Feedback** toggle with description "Make sure you turn on Output Transcriptions".
+
+- **Haptic Feedback — transcript-synced vibration**:
+  - Added `hapticFeedback` boolean to `LiveSettingsManager`, persisted via SharedPreferences.
+  - Vibration is driven by **output transcription changes** (not raw audio amplitude), so pulses are naturally synced to Apsara's speech rhythm — one pulse per new word/chunk.
+  - Duration scales with word count (45–100ms), intensity is moderate-strong (100–220 out of 255).
+  - Added `VIBRATE` permission to `AndroidManifest.xml` (normal permission, auto-granted).
+  - Vibrator instance cached via `remember`, with `hasVibrator()` check and full try-catch safety.
+  - Transcript length tracker resets when Apsara stops speaking.
+
+- **Crash fix**:
+  - Missing `VIBRATE` permission was causing `SecurityException` crash when haptic was enabled.
+  - Added defensive try-catch around all vibration calls.
+
+- **Session Resumption — Android client support**:
+  - Backend already sends `session_resumption_update` messages when Gemini provides a new resumption handle (logs `[GeminiLive] Session resumption handle updated`).
+  - Added `SessionResumptionEvent` data class and `sessionResumptionUpdate` SharedFlow to `LiveWebSocketClient`.
+  - `LiveWebSocketClient.handleMessage()` now parses `session_resumption_update` messages and emits events.
+  - `LiveSessionViewModel` observes resumption updates — when a resumable handle arrives, it sets `sessionResumed = true` and adds a system message in chat: "⟳ Session resumed — continuing from where we left off".
+  - `sessionResumed` flag resets on each new `startLive()` call.
+
+### How Session Resumption Works
+
+Session resumption is a Gemini Live API feature that allows sessions to survive WebSocket reconnections:
+
+1. **Backend enables it**: `sessionResumption: {}` is set in `DEFAULT_SESSION_CONFIG` (config.js), so every session opts in.
+2. **Gemini sends handles**: During the session, Gemini periodically sends `sessionResumptionUpdate` messages with a `newHandle` token. The backend stores this in `this.resumptionHandle`.
+3. **Auto-reconnect on GoAway**: When Gemini sends a `goAway` (connection will terminate), the backend schedules a `reconnect()` after 2s. On reconnect, `_buildGeminiConfig()` passes `sessionResumption: { handle: this.resumptionHandle }` to resume the same session.
+4. **Auto-reconnect on disconnect**: If the Gemini connection drops unexpectedly and a resumption handle exists, the backend auto-reconnects with it.
+5. **Android sees it**: The backend forwards `session_resumption_update` to the Android client, which now shows it in the live chat as a system indicator.
+
+The repeated `[GeminiLive] Session resumption handle updated` logs mean Gemini is regularly refreshing the handle — this is **normal and expected**. It ensures the handle stays fresh for reconnection.
+
+### Files changed
+
+```
+app/src/main/
+├── AndroidManifest.xml                                — Added VIBRATE permission
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/LiveSettingsManager.kt                        — hapticFeedback field + updateHapticFeedback()
+├── live/LiveWebSocketClient.kt                        — SessionResumptionEvent, sessionResumptionUpdate flow, handler
+├── live/LiveSessionViewModel.kt                       — sessionResumed state, resumption observer, system message in chat
+├── ui/screens/HomeScreen.kt                           — Transcript-synced haptic feedback (LaunchedEffect on outputTranscript)
+└── ui/screens/SettingsScreen.kt                       — General Settings section, Haptic Feedback toggle with note
+```

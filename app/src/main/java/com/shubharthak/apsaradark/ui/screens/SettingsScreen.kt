@@ -38,9 +38,15 @@ fun SettingsScreen(
     val palette = themeManager.currentTheme
     val liveSettings = LocalLiveSettings.current
 
+    var generalExpanded by remember { mutableStateOf(false) }
     var themesExpanded by remember { mutableStateOf(false) }
     var liveExpanded by remember { mutableStateOf(false) }
 
+    val generalArrowRotation by animateFloatAsState(
+        targetValue = if (generalExpanded) 180f else 0f,
+        animationSpec = tween(250),
+        label = "generalArrow"
+    )
     val themeArrowRotation by animateFloatAsState(
         targetValue = if (themesExpanded) 180f else 0f,
         animationSpec = tween(250),
@@ -86,6 +92,42 @@ fun SettingsScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            // ─── General Settings — expandable header ──────────────────
+            item {
+                SectionHeader(
+                    title = "General Settings",
+                    isExpanded = generalExpanded,
+                    rotation = generalArrowRotation,
+                    onClick = { generalExpanded = !generalExpanded },
+                    palette = palette
+                )
+            }
+
+            // General Settings panel — collapsible
+            item {
+                AnimatedVisibility(
+                    visible = generalExpanded,
+                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
+                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(150))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        SettingsToggle(
+                            label = "Haptic Feedback",
+                            description = "Make sure you turn on Output Transcriptions",
+                            checked = liveSettings.hapticFeedback,
+                            onCheckedChange = { liveSettings.updateHapticFeedback(it) },
+                            palette = palette
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
             // ─── Themes — expandable header ─────────────────────────
             item {
                 SectionHeader(

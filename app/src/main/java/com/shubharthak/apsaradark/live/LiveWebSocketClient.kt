@@ -69,6 +69,11 @@ class LiveWebSocketClient {
     private val _toolResults = MutableSharedFlow<List<ToolResultEvent>>(extraBufferCapacity = 16)
     val toolResults = _toolResults.asSharedFlow()
 
+    // Session resumption updates
+    data class SessionResumptionEvent(val resumable: Boolean, val hasHandle: Boolean)
+    private val _sessionResumptionUpdate = MutableSharedFlow<SessionResumptionEvent>(extraBufferCapacity = 16)
+    val sessionResumptionUpdate = _sessionResumptionUpdate.asSharedFlow()
+
     /**
      * Connect WebSocket and immediately send "connect" with the live config.
      */
@@ -191,6 +196,12 @@ class LiveWebSocketClient {
                         Log.d(TAG, "Tool results ($mode): ${events.map { it.name }}")
                         _toolResults.tryEmit(events)
                     }
+                }
+                "session_resumption_update" -> {
+                    val resumable = json.get("resumable")?.asBoolean ?: false
+                    val hasHandle = json.get("hasHandle")?.asBoolean ?: false
+                    Log.d(TAG, "Session resumption update: resumable=$resumable, hasHandle=$hasHandle")
+                    _sessionResumptionUpdate.tryEmit(SessionResumptionEvent(resumable, hasHandle))
                 }
             }
         } catch (e: Exception) {
