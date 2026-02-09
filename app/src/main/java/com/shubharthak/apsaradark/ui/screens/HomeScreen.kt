@@ -55,6 +55,7 @@ fun HomeScreen(
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     var showLiveAttachmentSheet by remember { mutableStateOf(false) }
+    var pastedImages by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
     val themeManager = LocalThemeManager.current
     val palette = themeManager.currentTheme
@@ -173,7 +174,11 @@ fun HomeScreen(
                 BottomInputBar(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    onSend = { inputText = "" },
+                    onSend = {
+                        // TODO: actually process the message + images
+                        inputText = ""
+                        pastedImages = emptyList()
+                    },
                     onMicClick = { /* TODO: voice-to-text input */ },
                     onAttachClick = {
                         if (isLiveActive) {
@@ -194,6 +199,9 @@ fun HomeScreen(
                     currentAudioDevice = liveViewModel.audioManager.audioOutputDevice.collectAsState().value,
                     onAudioDeviceChange = { device -> liveViewModel.audioManager.setAudioOutputDevice(device) },
                     hasBluetooth = liveViewModel.audioManager.isBluetoothAvailable(),
+                    pastedImages = pastedImages,
+                    onImagePasted = { uri -> pastedImages = pastedImages + uri },
+                    onImageRemoved = { uri -> pastedImages = pastedImages - uri },
                     focusRequester = focusRequester
                 )
             }
