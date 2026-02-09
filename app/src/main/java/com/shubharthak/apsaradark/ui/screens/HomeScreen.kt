@@ -622,7 +622,7 @@ private fun ApsaraBubble(
                 exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
             ) {
                 Text(
-                    text = parseBoldMarkdown(thought),
+                    text = parseMarkdown(thought, palette),
                     fontSize = 13.sp,
                     color = palette.textTertiary,
                     lineHeight = 19.sp,
@@ -652,10 +652,10 @@ private fun ApsaraBubble(
             }
         }
 
-        // Main text — plain, no bubble
+        // Main text — rendered as markdown, no bubble
         if (text.isNotBlank()) {
             Text(
-                text = text,
+                text = parseMarkdown(text, palette),
                 fontSize = 15.sp,
                 color = palette.textPrimary,
                 lineHeight = 22.sp,
@@ -788,33 +788,144 @@ private fun ToolCallCard(
 }
 
 /**
- * Parse **bold** markdown into an AnnotatedString with bold spans.
- * Removes the ** markers and applies FontWeight.Bold to the wrapped text.
+ * Parse common Markdown syntax into an AnnotatedString:
+ * - **bold**, *italic*, ***bold italic***
+ * - `inline code`
+ * - # Headings (H1–H3)
+ * - - / * / • bullet lists  (→ rendered with •  prefix)
+ * - Numbered lists (1. 2. …)
  */
-private fun parseBoldMarkdown(input: String): androidx.compose.ui.text.AnnotatedString {
+private fun parseMarkdown(
+    input: String,
+    palette: ApsaraColorPalette
+): androidx.compose.ui.text.AnnotatedString {
     val builder = androidx.compose.ui.text.AnnotatedString.Builder()
-    var i = 0
-    while (i < input.length) {
-        val boldStart = input.indexOf("**", i)
-        if (boldStart == -1) {
-            // No more bold markers — append rest
-            builder.append(input.substring(i))
-            break
-        }
-        // Append text before the bold marker
-        builder.append(input.substring(i, boldStart))
+    val lines = input.split("\n")
 
-        val boldEnd = input.indexOf("**", boldStart + 2)
-        if (boldEnd == -1) {
-            // No closing marker — append rest as-is
-            builder.append(input.substring(boldStart))
-            break
+    lines.forEachIndexed { lineIdx, rawLine ->
+        val line = rawLine.trimEnd()
+
+        // ── Heading lines ───────────────────────────────────────────
+        val headingMatch = Regex("^(#{1,3})\\s+(.*)").find(line)
+        if (headingMatch != null) {
+            val level = headingMatch.groupValues[1].length
+            val headingText = headingMatch.groupValues[2]
+            val style = when (level) {
+                1 -> androidx.compose.ui.text.SpanStyle(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+                2 -> androidx.compose.ui.text.SpanStyle(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+                else -> androidx.compose.ui.text.SpanStyle(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+            }
+            builder.pushStyle(style)
+            appendInlineMarkdown(builder, headingText, palette)
+            builder.pop()
         }
-        // Append the bold text with style
-        builder.pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
-        builder.append(input.substring(boldStart + 2, boldEnd))
-        builder.pop()
-        i = boldEnd + 2
+        // ── Bullet list lines ───────────────────────────────────────
+        else if (line.matches(Regex("^\\s*[-*•]\\s+.*"))) {
+            val content = line.replace(Regex("^\\s*[-*•]\\s+"), "")
+            builder.append("  •  ")
+            appendInlineMarkdown(builder, content, palette)
+        }
+        // ── Numbered list lines ─────────────────────────────────────
+        else if (line.matches(Regex("^\\s*\\d+\\.\\s+.*"))) {
+            val match = Regex("^(\\s*\\d+\\.)\\s+(.*)").find(line)
+            if (match != null) {
+                builder.append("  ${match.groupValues[1]} ")
+                appendInlineMarkdown(builder, match.groupValues[2], palette)
+            } else {
+                appendInlineMarkdown(builder, line, palette)
+            }
+        }
+        // ── Normal line ─────────────────────────────────────────────
+        else {
+            appendInlineMarkdown(builder, line, palette)
+        }
+
+        if (lineIdx < lines.size - 1) builder.append("\n")
     }
+
     return builder.toAnnotatedString()
+}
+
+/**
+ * Append a single line of text, resolving inline markdown:
+ * ***bold+italic***, **bold**, *italic*, `code`
+ */
+private fun appendInlineMarkdown(
+    builder: androidx.compose.ui.text.AnnotatedString.Builder,
+    text: String,
+    palette: ApsaraColorPalette
+) {
+    // Regex tokens in priority order:
+    //  1. `code`
+    //  2. ***bold italic***
+    //  3. **bold**
+    //  4. *italic*  (not preceded by another *)
+    val pattern = Regex("`([^`]+)`|\\*\\*\\*(.+?)\\*\\*\\*|\\*\\*(.+?)\\*\\*|(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)")
+    var cursor = 0
+
+    for (match in pattern.findAll(text)) {
+        // Append plain text before this match
+        if (match.range.first > cursor) {
+            builder.append(text.substring(cursor, match.range.first))
+        }
+
+        when {
+            // `inline code`
+            match.groupValues[1].isNotEmpty() -> {
+                builder.pushStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        background = palette.surfaceContainer,
+                        fontSize = 13.sp
+                    )
+                )
+                builder.append(" ${match.groupValues[1]} ")
+                builder.pop()
+            }
+            // ***bold italic***
+            match.groupValues[2].isNotEmpty() -> {
+                builder.pushStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        fontWeight = FontWeight.Bold,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                )
+                builder.append(match.groupValues[2])
+                builder.pop()
+            }
+            // **bold**
+            match.groupValues[3].isNotEmpty() -> {
+                builder.pushStyle(
+                    androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)
+                )
+                builder.append(match.groupValues[3])
+                builder.pop()
+            }
+            // *italic*
+            match.groupValues[4].isNotEmpty() -> {
+                builder.pushStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                )
+                builder.append(match.groupValues[4])
+                builder.pop()
+            }
+        }
+        cursor = match.range.last + 1
+    }
+
+    // Append remaining text after last match
+    if (cursor < text.length) {
+        builder.append(text.substring(cursor))
+    }
 }

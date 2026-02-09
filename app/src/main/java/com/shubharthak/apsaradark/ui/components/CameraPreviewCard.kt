@@ -273,11 +273,6 @@ fun CameraPreviewCard(
                             tint = Color(0xFFFF6B6B),
                             modifier = Modifier.size(16.dp)
                         )
-                        androidx.compose.material3.Text(
-                            text = "Clear",
-                            color = Color(0xFFFF6B6B),
-                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall
-                        )
                     }
                 }
             }
@@ -308,11 +303,6 @@ fun CameraPreviewCard(
                         contentDescription = if (isDrawMode) "Exit draw mode" else "Draw",
                         tint = if (isDrawMode) palette.accent else Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(16.dp)
-                    )
-                    androidx.compose.material3.Text(
-                        text = if (isDrawMode) "Drawing" else "Draw",
-                        color = if (isDrawMode) palette.accent else Color.White.copy(alpha = 0.7f),
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall
                     )
                 }
             }
