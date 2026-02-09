@@ -61,23 +61,35 @@ export function handleWebSocket(ws, apiKey) {
   function createCallbacks() {
     return {
       onConnected: () => {
+        console.log('[WS] Gemini session connected (isReconnecting:', isReconnecting, ')');
         send({ type: 'connected' });
       },
       onDisconnected: ({ reason }) => {
+        console.log('[WS] Gemini session disconnected, reason:', reason, '(isReconnecting:', isReconnecting, ')');
+        // During GoAway reconnect, don't tell the client about the intermediate disconnect.
+        // The client should only see: go_away → (pause) → connected. The disconnect/reconnect
+        // is an internal detail that the client doesn't need to know about.
+        if (isReconnecting) {
+          console.log('[WS] Suppressing disconnected message — GoAway reconnect in progress');
+          return;
+        }
         send({ type: 'disconnected', reason });
-        // Try auto-reconnect with session resumption (only if enabled)
-        // Skip if a GoAway-initiated reconnect is already in progress
-        if (!isReconnecting && geminiSession && geminiSession.resumptionHandle && geminiSession.config.sessionResumption) {
-          console.log('[WS] Auto-reconnecting with session resumption...');
+        // Try auto-reconnect with session resumption (only if enabled and not already reconnecting)
+        if (geminiSession && geminiSession.resumptionHandle && geminiSession.config.sessionResumption) {
+          console.log('[WS] Unexpected disconnect — auto-reconnecting with session resumption...');
           isReconnecting = true;
           setTimeout(() => {
             geminiSession?.reconnect().then(success => {
               isReconnecting = false;
               if (!success) {
+                console.error('[WS] Auto-reconnect failed');
                 send({ type: 'error', message: 'Auto-reconnect failed' });
+              } else {
+                console.log('[WS] Auto-reconnect succeeded');
               }
-            }).catch(() => {
+            }).catch((err) => {
               isReconnecting = false;
+              console.error('[WS] Auto-reconnect error:', err.message);
             });
           }, 1000);
         }
@@ -165,21 +177,35 @@ export function handleWebSocket(ws, apiKey) {
         }
       },
       onGoAway: ({ timeLeft }) => {
+        console.log('[WS] GoAway received, timeLeft:', timeLeft, '(isReconnecting:', isReconnecting, ')');
         send({ type: 'go_away', timeLeft });
-        // Auto-reconnect before disconnect — set flag to prevent onDisconnected from also reconnecting
+        // Auto-reconnect before disconnect — set flag to suppress intermediate disconnected messages
         if (geminiSession && !isReconnecting) {
-          console.log('[WS] GoAway received, scheduling reconnect...');
+          console.log('[WS] GoAway: scheduling reconnect in 2s...');
           isReconnecting = true;
           setTimeout(() => {
-            geminiSession?.reconnect().then(success => {
+            if (!geminiSession) {
+              console.log('[WS] GoAway reconnect cancelled — session was destroyed');
               isReconnecting = false;
-              if (!success) {
+              return;
+            }
+            console.log('[WS] GoAway: executing reconnect now...');
+            geminiSession.reconnect().then(success => {
+              isReconnecting = false;
+              if (success) {
+                console.log('[WS] GoAway reconnect succeeded');
+              } else {
+                console.error('[WS] GoAway reconnect failed');
                 send({ type: 'error', message: 'GoAway reconnect failed' });
               }
-            }).catch(() => {
+            }).catch((err) => {
               isReconnecting = false;
+              console.error('[WS] GoAway reconnect error:', err.message);
+              send({ type: 'error', message: 'GoAway reconnect error: ' + err.message });
             });
           }, 2000);
+        } else {
+          console.log('[WS] GoAway: skipping reconnect (already reconnecting or no session)');
         }
       },
       onSessionResumptionUpdate: ({ resumable, hasHandle }) => {
@@ -257,6 +283,7 @@ export function handleWebSocket(ws, apiKey) {
       }
 
       case 'disconnect': {
+        console.log('[WS] Client requested disconnect');
         if (geminiSession) {
           isReconnecting = true; // Prevent onDisconnected from auto-reconnecting
           await geminiSession.disconnect();
@@ -402,10 +429,11 @@ export function handleWebSocket(ws, apiKey) {
 
   // Cleanup on disconnect
   ws.on('close', async () => {
-    console.log('[WS] Client disconnected');
+    console.log('[WS] Client WebSocket closed (isReconnecting:', isReconnecting, ')');
     clearInterval(heartbeatInterval);
     isReconnecting = true; // Prevent onDisconnected from auto-reconnecting after client leaves
     if (geminiSession) {
+      console.log('[WS] Cleaning up Gemini session...');
       await geminiSession.disconnect();
       geminiSession = null;
     }

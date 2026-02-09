@@ -10,8 +10,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.shubharthak.apsaradark.data.LiveSettingsManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 /**
  * A single message in the live conversation.
@@ -114,6 +117,7 @@ class LiveSessionViewModel(
     // Prevent duplicate "Session resumed" messages during GoAway reconnect cycles
     private var pendingGoAwayReconnect = false
     private var goAwayMessageIndex = -1
+    private var goAwayTimeoutJob: Job? = null
 
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
@@ -127,13 +131,24 @@ class LiveSessionViewModel(
     init {
         // Observe WebSocket state changes
         wsClient.state.onEach { wsState ->
-            liveState = when (wsState) {
-                LiveWebSocketClient.ConnectionState.IDLE -> LiveState.IDLE
-                LiveWebSocketClient.ConnectionState.CONNECTING,
-                LiveWebSocketClient.ConnectionState.WS_OPEN -> LiveState.CONNECTING
-                LiveWebSocketClient.ConnectionState.LIVE_CONNECTED -> LiveState.CONNECTED
-                LiveWebSocketClient.ConnectionState.ERROR -> LiveState.ERROR
-                LiveWebSocketClient.ConnectionState.DISCONNECTED -> LiveState.IDLE
+            Log.d(TAG, "WS state: $wsState (pendingGoAway=$pendingGoAwayReconnect)")
+
+            // During GoAway reconnect, keep the state as CONNECTED —
+            // the intermediate disconnect is an internal detail
+            if (pendingGoAwayReconnect &&
+                (wsState == LiveWebSocketClient.ConnectionState.DISCONNECTED ||
+                 wsState == LiveWebSocketClient.ConnectionState.IDLE)) {
+                Log.d(TAG, "Ignoring DISCONNECTED/IDLE during GoAway reconnect")
+                // Don't update liveState — stay CONNECTED
+            } else {
+                liveState = when (wsState) {
+                    LiveWebSocketClient.ConnectionState.IDLE -> LiveState.IDLE
+                    LiveWebSocketClient.ConnectionState.CONNECTING,
+                    LiveWebSocketClient.ConnectionState.WS_OPEN -> LiveState.CONNECTING
+                    LiveWebSocketClient.ConnectionState.LIVE_CONNECTED -> LiveState.CONNECTED
+                    LiveWebSocketClient.ConnectionState.ERROR -> LiveState.ERROR
+                    LiveWebSocketClient.ConnectionState.DISCONNECTED -> LiveState.IDLE
+                }
             }
 
             // When Gemini Live is connected, start recording + playback
@@ -144,6 +159,8 @@ class LiveSessionViewModel(
                     // Only show "Session resumed" once per GoAway event
                     if (pendingGoAwayReconnect) {
                         pendingGoAwayReconnect = false
+                        goAwayTimeoutJob?.cancel()
+                        goAwayTimeoutJob = null
                         // Update the GoAway placeholder message in-place
                         if (goAwayMessageIndex in messages.indices) {
                             messages[goAwayMessageIndex] = LiveMessage(
@@ -378,6 +395,21 @@ class LiveSessionViewModel(
                     )
                 )
                 goAwayMessageIndex = messages.lastIndex
+
+                // Safety timeout: if reconnect doesn't complete within 15s, give up
+                goAwayTimeoutJob?.cancel()
+                goAwayTimeoutJob = viewModelScope.launch {
+                    delay(15_000)
+                    if (pendingGoAwayReconnect) {
+                        Log.e(TAG, "GoAway reconnect timed out after 15s")
+                        pendingGoAwayReconnect = false
+                        goAwayMessageIndex = -1
+                        if (liveState != LiveState.CONNECTED) {
+                            // Reconnect failed — clean up properly
+                            stopLive()
+                        }
+                    }
+                }
             }
         }.launchIn(viewModelScope)
 
@@ -441,6 +473,8 @@ class LiveSessionViewModel(
         shownResumptionReady = false
         pendingGoAwayReconnect = false
         goAwayMessageIndex = -1
+        goAwayTimeoutJob?.cancel()
+        goAwayTimeoutJob = null
         val config = liveSettings.buildConfigMap()
         wsClient.connect(liveSettings.backendUrl, config)
 

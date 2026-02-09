@@ -134,7 +134,8 @@ class LiveWebSocketClient {
                     _state.value = ConnectionState.LIVE_CONNECTED
                 }
                 "disconnected" -> {
-                    Log.d(TAG, "Gemini Live disconnected")
+                    val reason = json.get("reason")?.asString ?: "unknown"
+                    Log.d(TAG, "Gemini Live disconnected, reason=$reason")
                     _state.value = ConnectionState.DISCONNECTED
                 }
                 "audio" -> {
