@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.shubharthak.apsaradark.data.LiveSettingsManager
+import com.shubharthak.apsaradark.data.LocalLiveSettings
 
 private fun buildColorScheme(palette: ApsaraColorPalette) = if (palette.isLight) {
     lightColorScheme(
@@ -56,6 +58,7 @@ private fun buildColorScheme(palette: ApsaraColorPalette) = if (palette.isLight)
 fun ApsaraDarkTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val themeManager = remember { ThemeManager(context) }
+    val liveSettingsManager = remember { LiveSettingsManager(context) }
     val palette = themeManager.currentTheme
     val colorScheme = buildColorScheme(palette)
 
@@ -72,7 +75,10 @@ fun ApsaraDarkTheme(content: @Composable () -> Unit) {
         }
     }
 
-    CompositionLocalProvider(LocalThemeManager provides themeManager) {
+    CompositionLocalProvider(
+        LocalThemeManager provides themeManager,
+        LocalLiveSettings provides liveSettingsManager
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = ApsaraDarkTypography,

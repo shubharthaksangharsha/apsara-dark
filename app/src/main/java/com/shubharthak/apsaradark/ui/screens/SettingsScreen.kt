@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -18,10 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shubharthak.apsaradark.data.LiveSettingsManager
+import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,11 +36,20 @@ fun SettingsScreen(
 ) {
     val themeManager = LocalThemeManager.current
     val palette = themeManager.currentTheme
+    val liveSettings = LocalLiveSettings.current
+
     var themesExpanded by remember { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(
+    var liveExpanded by remember { mutableStateOf(false) }
+
+    val themeArrowRotation by animateFloatAsState(
         targetValue = if (themesExpanded) 180f else 0f,
         animationSpec = tween(250),
-        label = "arrow"
+        label = "themeArrow"
+    )
+    val liveArrowRotation by animateFloatAsState(
+        targetValue = if (liveExpanded) 180f else 0f,
+        animationSpec = tween(250),
+        label = "liveArrow"
     )
 
     Scaffold(
@@ -72,32 +86,15 @@ fun SettingsScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Themes — expandable header
+            // ─── Themes — expandable header ─────────────────────────
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { themesExpanded = !themesExpanded }
-                        .padding(horizontal = 12.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Themes",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = palette.textPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        Icons.Outlined.KeyboardArrowDown,
-                        contentDescription = if (themesExpanded) "Collapse" else "Expand",
-                        tint = palette.textTertiary,
-                        modifier = Modifier
-                            .size(22.dp)
-                            .rotate(arrowRotation)
-                    )
-                }
+                SectionHeader(
+                    title = "Themes",
+                    isExpanded = themesExpanded,
+                    rotation = themeArrowRotation,
+                    onClick = { themesExpanded = !themesExpanded },
+                    palette = palette
+                )
             }
 
             // Themes grid — collapsible
@@ -127,7 +124,6 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
-                                // Fill empty space if odd number
                                 if (rowThemes.size < 2) {
                                     Spacer(modifier = Modifier.weight(1f))
                                 }
@@ -138,12 +134,404 @@ fun SettingsScreen(
                 }
             }
 
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // ─── Live Settings — expandable header ──────────────────
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                SectionHeader(
+                    title = "Live Settings",
+                    isExpanded = liveExpanded,
+                    rotation = liveArrowRotation,
+                    onClick = { liveExpanded = !liveExpanded },
+                    palette = palette
+                )
+            }
+
+            // Live Settings panel — collapsible
+            item {
+                AnimatedVisibility(
+                    visible = liveExpanded,
+                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
+                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(150))
+                ) {
+                    LiveSettingsPanel(liveSettings = liveSettings, palette = palette)
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+// ─── Section Header ─────────────────────────────────────────────────────────
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    isExpanded: Boolean,
+    rotation: Float,
+    onClick: () -> Unit,
+    palette: ApsaraColorPalette
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = palette.textPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            Icons.Outlined.KeyboardArrowDown,
+            contentDescription = if (isExpanded) "Collapse" else "Expand",
+            tint = palette.textTertiary,
+            modifier = Modifier
+                .size(22.dp)
+                .rotate(rotation)
+        )
+    }
+}
+
+// ─── Live Settings Panel ────────────────────────────────────────────────────
+
+@Composable
+private fun LiveSettingsPanel(
+    liveSettings: LiveSettingsManager,
+    palette: ApsaraColorPalette
+) {
+    Column(
+        modifier = Modifier.padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Model selector
+        SettingsDropdown(
+            label = "Model",
+            value = liveSettings.model,
+            options = LiveSettingsManager.availableModels,
+            onSelect = { liveSettings.updateModel(it) },
+            palette = palette
+        )
+
+        // Voice selector
+        SettingsDropdown(
+            label = "Voice",
+            value = liveSettings.voice,
+            options = LiveSettingsManager.availableVoices,
+            onSelect = { liveSettings.updateVoice(it) },
+            palette = palette
+        )
+
+        // Response modality
+        SettingsDropdown(
+            label = "Response Modality",
+            value = liveSettings.responseModality,
+            options = listOf("AUDIO", "TEXT"),
+            onSelect = { liveSettings.updateResponseModality(it) },
+            palette = palette
+        )
+
+        // Temperature slider
+        SettingsSlider(
+            label = "Temperature",
+            value = liveSettings.temperature,
+            onValueChange = { liveSettings.updateTemperature(it) },
+            valueRange = 0f..2f,
+            palette = palette
+        )
+
+        // System instruction
+        SettingsTextField(
+            label = "System Instruction",
+            value = liveSettings.systemInstruction,
+            onValueChange = { liveSettings.updateSystemInstruction(it) },
+            palette = palette,
+            singleLine = false,
+            maxLines = 4,
+            placeholder = "Custom personality or instructions..."
+        )
+
+        // Toggles
+        SettingsToggle(
+            label = "Affective Dialog",
+            description = "Emotion-aware responses",
+            checked = liveSettings.affectiveDialog,
+            onCheckedChange = { liveSettings.updateAffectiveDialog(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Proactive Audio",
+            description = "Model decides when to respond",
+            checked = liveSettings.proactiveAudio,
+            onCheckedChange = { liveSettings.updateProactiveAudio(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Input Transcription",
+            description = "Transcribe your speech",
+            checked = liveSettings.inputTranscription,
+            onCheckedChange = { liveSettings.updateInputTranscription(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Output Transcription",
+            description = "Transcribe Apsara's speech",
+            checked = liveSettings.outputTranscription,
+            onCheckedChange = { liveSettings.updateOutputTranscription(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Context Compression",
+            description = "Sliding window for long sessions",
+            checked = liveSettings.contextCompression,
+            onCheckedChange = { liveSettings.updateContextCompression(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Google Search",
+            description = "Allow model to search the web",
+            checked = liveSettings.googleSearch,
+            onCheckedChange = { liveSettings.updateGoogleSearch(it) },
+            palette = palette
+        )
+
+        SettingsToggle(
+            label = "Include Thoughts",
+            description = "Show model's thinking process",
+            checked = liveSettings.includeThoughts,
+            onCheckedChange = { liveSettings.updateIncludeThoughts(it) },
+            palette = palette
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+// ─── Settings Components ────────────────────────────────────────────────────
+
+@Composable
+private fun SettingsTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    palette: ApsaraColorPalette,
+    singleLine: Boolean = true,
+    maxLines: Int = 1,
+    placeholder: String = ""
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.surfaceContainer)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = palette.textTertiary,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Box {
+            if (value.isEmpty() && placeholder.isNotEmpty()) {
+                Text(
+                    text = placeholder,
+                    fontSize = 14.sp,
+                    color = palette.textTertiary.copy(alpha = 0.5f)
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                textStyle = TextStyle(
+                    fontSize = 14.sp,
+                    color = palette.textPrimary
+                ),
+                cursorBrush = SolidColor(palette.accent),
+                singleLine = singleLine,
+                maxLines = maxLines,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsDropdown(
+    label: String,
+    value: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    palette: ApsaraColorPalette
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.surfaceContainer)
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = palette.textTertiary,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                color = palette.textPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                Icons.Outlined.KeyboardArrowDown,
+                contentDescription = "Select",
+                tint = palette.textTertiary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(palette.surfaceContainerHigh)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = option,
+                            fontSize = 14.sp,
+                            color = if (option == value) palette.accent else palette.textPrimary,
+                            fontWeight = if (option == value) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }
 }
+
+@Composable
+private fun SettingsSlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    palette: ApsaraColorPalette
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.surfaceContainer)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = palette.textTertiary,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = String.format("%.1f", value),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.accent
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            colors = SliderDefaults.colors(
+                thumbColor = palette.accent,
+                activeTrackColor = palette.accent,
+                inactiveTrackColor = palette.surfaceContainerHighest
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun SettingsToggle(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    palette: ApsaraColorPalette
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.surfaceContainer)
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Normal,
+                color = palette.textPrimary
+            )
+            Text(
+                text = description,
+                fontSize = 12.sp,
+                color = palette.textTertiary
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = palette.accent,
+                checkedTrackColor = palette.accentSubtle,
+                uncheckedThumbColor = palette.textTertiary,
+                uncheckedTrackColor = palette.surfaceContainerHigh,
+                uncheckedBorderColor = palette.surfaceContainerHighest
+            )
+        )
+    }
+}
+
+// ─── Theme Chip ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun ThemeChip(

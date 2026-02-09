@@ -1,6 +1,7 @@
 package com.shubharthak.apsaradark.ui.components
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -17,7 +18,8 @@ import com.shubharthak.apsaradark.ui.theme.*
 @Composable
 fun FeatureCard(
     feature: MainFeature,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     val palette = LocalThemeManager.current.currentTheme
 
@@ -28,7 +30,8 @@ fun FeatureCard(
                 width = 0.5.dp,
                 color = palette.surfaceContainerHighest,
                 shape = RoundedCornerShape(24.dp)
-            ),
+            )
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = palette.surfaceContainer

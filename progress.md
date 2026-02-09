@@ -112,3 +112,78 @@ com.shubharthak.apsaradark
 - Build out My Canvas, Plugins, Laptop Control, and Settings screens.
 - Add right-side panel (TBD).
 - Backend integration.
+
+---
+
+## v2.0.0 — Gemini Live API Integration (Feb 9, 2026)
+
+### What was done
+
+- **Node.js Backend** (`/backend`):
+  - Express + WebSocket relay server bridging Android app ↔ Gemini Live API.
+  - Full JSON protocol (audio, text, video, tool calls, session resumption, context compression).
+  - Health (`/health`) and config (`/config`) HTTP endpoints.
+  - Single-user design, API key stored in `.env` on server.
+  - Deployment: Caddy reverse proxy config + PM2 service + systemd service (DEPLOY.md).
+  - Backend deployed to Oracle Cloud at `wss://apsara-dark-backend.devshubh.me/live`.
+
+- **Android Live Session Layer**:
+  - `LiveSettingsManager` — persists all Gemini Live config to SharedPreferences (backend URL, model, voice, temperature, system instruction, response modality, 7 toggles).
+  - `LiveWebSocketClient` — OkHttp WebSocket client with JSON protocol, state flows, audio/text/transcription streams.
+  - `LiveAudioManager` — PCM audio record (16kHz) + playback (24kHz), mute toggle, queue-based playback.
+  - `LiveSessionViewModel` — orchestrates WS ↔ audio ↔ UI state, handles connect/disconnect/mute/sendText.
+
+- **HomeScreen Integration**:
+  - Live mode triggered ONLY by explicit user action: tapping the **Live (GraphicEq) icon** in the input bar OR the **"Talk" feature card**.
+  - Microphone permission requested at live mode entry.
+  - **Normal mode**: text input + mic + live icon (unchanged default).
+  - **Live mode**: ChatGPT Voice-style UI with animated pulsing orb, status text, input/output transcripts, and the live input bar (+ | Type | Mic | End).
+  - Top bar hides during live mode. Drawer gestures disabled during live mode.
+
+- **BottomInputBar**:
+  - Two-mode `AnimatedContent`: Normal ↔ Live, keyed on `liveState != IDLE`.
+  - Normal: text field + mic + GraphicEq (live trigger).
+  - Live: + attach, type field with send, mic mute/unmute (with spinner while connecting), End button.
+
+- **Settings — Live Settings Panel**:
+  - Expandable "Live Settings" section in SettingsScreen.
+  - Backend URL text field, Model/Voice/Modality dropdowns, Temperature slider, System Instruction multiline field.
+  - 7 toggle switches: Affective Dialog, Proactive Audio, Input/Output Transcription, Context Compression, Google Search, Include Thoughts.
+  - All settings persist to SharedPreferences and are used when starting live sessions.
+
+- **FeatureCard**: Added optional `onClick` callback so "Talk" card triggers live mode.
+
+- **Build fix**: Renamed setter methods in `LiveSettingsManager` from `setX()` to `updateX()` to avoid JVM signature clash with Kotlin's `private set`.
+
+### New files
+
+```
+backend/
+├── src/
+│   ├── server.js              — Express + WS server
+│   ├── ws-handler.js          — WebSocket message handler
+│   ├── gemini-live-session.js — Gemini Live API session wrapper
+│   └── config.js              — Default config, voices, models
+├── .env                       — API key + port config
+├── package.json
+├── Caddyfile                  — Caddy reverse proxy config
+└── DEPLOY.md                  — Full Oracle Cloud deployment guide
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/
+│   └── LiveSettingsManager.kt — Persistent live settings
+└── live/
+    ├── LiveWebSocketClient.kt — OkHttp WS client
+    ├── LiveAudioManager.kt    — PCM record/playback
+    └── LiveSessionViewModel.kt — Session orchestrator
+```
+
+### Dependencies added
+
+- `com.squareup.okhttp3:okhttp:4.12.0` — WebSocket client
+- `com.google.code.gson:gson:2.11.0` — JSON serialization
+- `androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7` — ViewModel for Compose
+
+### Debug APK
+
+Successfully assembled at `app/build/outputs/apk/debug/app-debug.apk`.

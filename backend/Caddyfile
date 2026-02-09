@@ -1,0 +1,18 @@
+# Caddyfile for Apsara Dark Backend
+# Deploy on Oracle Cloud (or any VPS) with Caddy v2
+#
+# Append this block to your existing /etc/caddy/Caddyfile
+# Then: sudo caddy fmt --overwrite /etc/caddy/Caddyfile
+#       sudo systemctl restart caddy
+#
+# Caddy will auto-provision TLS via Let's Encrypt.
+
+apsara-dark-backend.devshubh.me {
+	reverse_proxy localhost:3012
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

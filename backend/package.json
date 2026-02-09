@@ -1,0 +1,20 @@
+{
+  "name": "apsara-dark-backend",
+  "version": "1.0.0",
+  "description": "Gemini Live API backend for Apsara Dark — single-user relay server",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.40.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
