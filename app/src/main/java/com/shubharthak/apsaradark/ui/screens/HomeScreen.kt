@@ -84,7 +84,7 @@ fun HomeScreen() {
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Image(
-                                painter = painterResource(id = R.mipmap.ic_launcher),
+                                painter = painterResource(id = R.drawable.apsara_logo),
                                 contentDescription = "Apsara Logo",
                                 modifier = Modifier
                                     .size(34.dp)
