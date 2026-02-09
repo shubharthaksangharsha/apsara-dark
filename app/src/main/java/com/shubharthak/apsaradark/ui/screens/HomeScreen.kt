@@ -286,7 +286,9 @@ fun HomeScreen(
             onDismiss = { showLiveAttachmentSheet = false },
             onCameraClick = { /* TODO: open camera for live video */ },
             onPhotosClick = { /* TODO: pick photo to send */ },
-            onFilesClick = { /* TODO: pick file to send */ }
+            onFilesClick = { /* TODO: pick file to send */ },
+            onVideoClick = { /* TODO: record/pick video to send */ },
+            onScreenshareClick = { /* TODO: start screen share */ }
         )
     }
 }

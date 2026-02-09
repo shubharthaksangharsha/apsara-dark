@@ -9,7 +9,7 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Videocam
-import androidx.compose.material.icons.outlined.ScreenShare
+import androidx.compose.material.icons.automirrored.outlined.ScreenShare
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -55,58 +55,70 @@ fun AttachmentBottomSheet(
         },
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 16.dp)
                 .padding(bottom = 24.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            AttachmentOption(
-                icon = Icons.Outlined.PhotoCamera,
-                label = "Camera",
-                palette = palette,
-                onClick = {
-                    onCameraClick()
-                    onDismiss()
-                }
-            )
-            AttachmentOption(
-                icon = Icons.Outlined.PhotoLibrary,
-                label = "Photos",
-                palette = palette,
-                onClick = {
-                    onPhotosClick()
-                    onDismiss()
-                }
-            )
-            AttachmentOption(
-                icon = Icons.Outlined.AttachFile,
-                label = "Files",
-                palette = palette,
-                onClick = {
-                    onFilesClick()
-                    onDismiss()
-                }
-            )
-            AttachmentOption(
-                icon = Icons.Outlined.Videocam,
-                label = "Video",
-                palette = palette,
-                onClick = {
-                    onVideoClick()
-                    onDismiss()
-                }
-            )
-            AttachmentOption(
-                icon = Icons.Outlined.ScreenShare,
-                label = "Screenshare",
-                palette = palette,
-                onClick = {
-                    onScreenshareClick()
-                    onDismiss()
-                }
-            )
+            // Row 1: Video, Photos, Files
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                AttachmentOption(
+                    icon = Icons.Outlined.Videocam,
+                    label = "Video",
+                    palette = palette,
+                    onClick = {
+                        onVideoClick()
+                        onDismiss()
+                    }
+                )
+                AttachmentOption(
+                    icon = Icons.Outlined.PhotoLibrary,
+                    label = "Photos",
+                    palette = palette,
+                    onClick = {
+                        onPhotosClick()
+                        onDismiss()
+                    }
+                )
+                AttachmentOption(
+                    icon = Icons.Outlined.AttachFile,
+                    label = "Files",
+                    palette = palette,
+                    onClick = {
+                        onFilesClick()
+                        onDismiss()
+                    }
+                )
+            }
+            // Row 2: Camera, Screenshare
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                AttachmentOption(
+                    icon = Icons.Outlined.PhotoCamera,
+                    label = "Camera",
+                    palette = palette,
+                    onClick = {
+                        onCameraClick()
+                        onDismiss()
+                    }
+                )
+                AttachmentOption(
+                    icon = Icons.AutoMirrored.Outlined.ScreenShare,
+                    label = "Screenshare",
+                    palette = palette,
+                    onClick = {
+                        onScreenshareClick()
+                        onDismiss()
+                    }
+                )
+            }
         }
     }
 }
