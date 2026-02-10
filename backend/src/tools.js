@@ -252,9 +252,10 @@ export function executeTool(name, args = {}) {
  * 
  * @param {Object} args - { prompt, title }
  * @param {Function} onProgress - Callback for progress updates sent to client
+ * @param {Object} interactionConfig - Config overrides (model, temperature, etc.) from session
  * @returns {Promise<Object>} Result to send back to Gemini
  */
-export async function executeCanvasTool(args = {}, onProgress) {
+export async function executeCanvasTool(args = {}, onProgress, interactionConfig = {}) {
   if (!canvasService) {
     return { success: false, error: 'Canvas service not initialized' };
   }
@@ -268,6 +269,7 @@ export async function executeCanvasTool(args = {}, onProgress) {
     const app = await canvasService.generateApp({
       prompt,
       title,
+      config: interactionConfig,
       onProgress: (status, message) => {
         console.log(`[Canvas Tool] ${status}: ${message}`);
         onProgress?.(status, message);
@@ -297,9 +299,10 @@ export async function executeCanvasTool(args = {}, onProgress) {
  * 
  * @param {Object} args - { canvas_id, instructions }
  * @param {Function} onProgress - Callback for progress updates sent to client
+ * @param {Object} interactionConfig - Config overrides (model, temperature, etc.) from session
  * @returns {Promise<Object>} Result to send back to Gemini
  */
-export async function executeCanvasEditTool(args = {}, onProgress) {
+export async function executeCanvasEditTool(args = {}, onProgress, interactionConfig = {}) {
   if (!canvasService) {
     return { success: false, error: 'Canvas service not initialized' };
   }
@@ -316,6 +319,7 @@ export async function executeCanvasEditTool(args = {}, onProgress) {
     const app = await canvasService.editApp({
       canvasId: canvas_id,
       instructions,
+      config: interactionConfig,
       onProgress: (status, message) => {
         console.log(`[Canvas Edit Tool] ${status}: ${message}`);
         onProgress?.(status, message);
@@ -378,7 +382,7 @@ export async function executeInterpreterTool(args = {}, onProgress, interactionC
     // Build image URLs for client
     const imageUrls = (session.images || []).map((img, i) => ({
       index: i,
-      mime_type: img.mime_type,
+      mimeType: img.mime_type,
       url: `/api/interpreter/${session.id}/images/${i}`,
     }));
 

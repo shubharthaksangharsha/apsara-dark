@@ -162,14 +162,24 @@ export class InterpreterService {
 
     for (const output of interaction.outputs) {
       switch (output.type) {
-        case 'executable_code':
+        case 'code_execution_call':
           // The code that was generated and executed
+          // Structure: { arguments: { code, language }, id, type }
+          result.code += (result.code ? '\n\n' : '') + (output.arguments?.code || '');
+          break;
+
+        case 'executable_code':
+          // Legacy/alternative format
           result.code += (result.code ? '\n\n' : '') + (output.code || output.text || '');
           break;
 
         case 'code_execution_result':
           // The result of executing the code (stdout/stderr)
-          result.output += (result.output ? '\n' : '') + (output.output || output.text || '');
+          // Structure: { call_id, is_error, result, type }
+          result.output += (result.output ? '\n' : '') + (output.result || output.output || output.text || '');
+          if (output.is_error) {
+            result.error = output.result || 'Code execution error';
+          }
           break;
 
         case 'text':
@@ -187,7 +197,23 @@ export class InterpreterService {
           }
           break;
 
+        case 'inline_data':
+          // Alternative image format
+          if (output.data || output.inline_data) {
+            const imgData = output.inline_data || output;
+            result.images.push({
+              data: imgData.data || '',
+              mime_type: imgData.mime_type || imgData.mimeType || 'image/png',
+            });
+          }
+          break;
+
+        case 'thought':
+          // Skip thought outputs (just model reasoning)
+          break;
+
         default:
+          console.log(`[Interpreter] Unknown output type: ${output.type}`, JSON.stringify(output).substring(0, 200));
           break;
       }
     }

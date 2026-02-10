@@ -177,12 +177,14 @@ export function handleWebSocket(ws, apiKey) {
                   result = await executeInterpreterTool(fc.args || {}, progressCb, iConfig);
                   // Send image data to client for inline display
                   if (result.success && result.images && result.images.length > 0) {
-                    send({ type: 'interpreter_images', session_id: result.session_id, images: result.images });
+                    send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                   }
                 } else if (fc.name === 'edit_canvas') {
-                  result = await executeCanvasEditTool(fc.args || {}, progressCb);
+                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);
                 } else {
-                  result = await executeCanvasTool(fc.args || {}, progressCb);
+                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  result = await executeCanvasTool(fc.args || {}, progressCb, iConfig);
                 }
                 console.log(`[WS] [SYNC-LONG] Tool result (${fc.name}):`, JSON.stringify(result));
                 const response = { id: fc.id, name: fc.name, response: result };
@@ -216,12 +218,14 @@ export function handleWebSocket(ws, apiKey) {
                     const iConfig = geminiSession?.config?.interactionConfig || {};
                     result = await executeInterpreterTool(fc.args || {}, progressCb, iConfig);
                     if (result.success && result.images && result.images.length > 0) {
-                      send({ type: 'interpreter_images', session_id: result.session_id, images: result.images });
+                      send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                     }
                   } else if (fc.name === 'edit_canvas') {
-                    result = await executeCanvasEditTool(fc.args || {}, progressCb);
+                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);
                   } else {
-                    result = await executeCanvasTool(fc.args || {}, progressCb);
+                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    result = await executeCanvasTool(fc.args || {}, progressCb, iConfig);
                   }
                 } else {
                   result = executeTool(fc.name, fc.args || {});

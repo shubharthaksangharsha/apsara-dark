@@ -35,7 +35,13 @@ export function createInterpreterRouter(apiKey) {
     if (!detail) {
       return res.status(404).json({ error: 'Session not found' });
     }
-    res.json(detail);
+    // Replace raw base64 image data with URLs for the client
+    const images = (detail.images || []).map((img, i) => ({
+      index: i,
+      mime_type: img.mime_type,
+      url: `/api/interpreter/${detail.id}/images/${i}`,
+    }));
+    res.json({ ...detail, images });
   });
 
   // ─── POST /api/interpreter — run code ─────────────────────────────────────
