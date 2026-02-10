@@ -82,9 +82,10 @@ app.use('/api/canvas', createCanvasRouter(GEMINI_API_KEY));
 const server = createServer(app);
 
 // WebSocket for Live API (real-time audio/video)
+// Use noServer mode to avoid multiple upgrade listeners competing on the same
+// HTTP server — that race causes "Control frames must be final" errors.
 const wssLive = new WebSocketServer({
-  server,
-  path: '/live',
+  noServer: true,
   maxPayload: 10 * 1024 * 1024, // 10 MB max per message (for video frames)
 });
 
@@ -96,8 +97,7 @@ wssLive.on('connection', (ws, req) => {
 
 // WebSocket for Interactions API (text chat)
 const wssInteractions = new WebSocketServer({
-  server,
-  path: '/chat',
+  noServer: true,
   maxPayload: 5 * 1024 * 1024, // 5 MB max per message
 });
 
@@ -105,6 +105,23 @@ wssInteractions.on('connection', (ws, req) => {
   const clientIP = req.socket.remoteAddress;
   console.log(`[Server] New Interactions WebSocket connection from ${clientIP}`);
   handleInteractionsWebSocket(ws, GEMINI_API_KEY);
+});
+
+// Manual upgrade routing — only ONE handler per connection, no racing
+server.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+
+  if (pathname === '/live') {
+    wssLive.handleUpgrade(request, socket, head, (ws) => {
+      wssLive.emit('connection', ws, request);
+    });
+  } else if (pathname === '/chat') {
+    wssInteractions.handleUpgrade(request, socket, head, (ws) => {
+      wssInteractions.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 // --- Start ---
