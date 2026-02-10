@@ -15,6 +15,9 @@ import { WebSocketServer } from 'ws';
 import { handleWebSocket } from './ws-handler.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
 import { TOOL_DECLARATIONS } from './tools.js';
+import { createInteractionsRouter } from './interactions/interactions-router.js';
+import { handleInteractionsWebSocket } from './interactions/interactions-ws-handler.js';
+import { DEFAULT_MODEL } from './interactions/interactions-config.js';
 
 // --- Environment ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -65,42 +68,70 @@ app.get('/config', (req, res) => {
   });
 });
 
+// --- Interactions API (text/chat endpoints) ---
+app.use('/api/interactions', createInteractionsRouter(GEMINI_API_KEY));
+
 // --- HTTP + WebSocket server ---
 const server = createServer(app);
 
-const wss = new WebSocketServer({
+// WebSocket for Live API (real-time audio/video)
+const wssLive = new WebSocketServer({
   server,
   path: '/live',
   maxPayload: 10 * 1024 * 1024, // 10 MB max per message (for video frames)
 });
 
-wss.on('connection', (ws, req) => {
+wssLive.on('connection', (ws, req) => {
   const clientIP = req.socket.remoteAddress;
-  console.log(`[Server] New WebSocket connection from ${clientIP}`);
+  console.log(`[Server] New Live WebSocket connection from ${clientIP}`);
   handleWebSocket(ws, GEMINI_API_KEY);
+});
+
+// WebSocket for Interactions API (text chat)
+const wssInteractions = new WebSocketServer({
+  server,
+  path: '/chat',
+  maxPayload: 5 * 1024 * 1024, // 5 MB max per message
+});
+
+wssInteractions.on('connection', (ws, req) => {
+  const clientIP = req.socket.remoteAddress;
+  console.log(`[Server] New Interactions WebSocket connection from ${clientIP}`);
+  handleInteractionsWebSocket(ws, GEMINI_API_KEY);
 });
 
 // --- Start ---
 server.listen(PORT, HOST, () => {
   console.log('');
-  console.log('  ╔═══════════════════════════════════════════╗');
-  console.log('  ║       🌙 Apsara Dark — Live Backend       ║');
-  console.log('  ╠═══════════════════════════════════════════╣');
-  console.log(`  ║  HTTP:  http://${HOST}:${PORT}              ║`);
-  console.log(`  ║  WS:    ws://${HOST}:${PORT}/live            ║`);
-  console.log('  ║  Health: /health                          ║');
-  console.log('  ║  Config: /config                          ║');
-  console.log('  ╚═══════════════════════════════════════════╝');
+  console.log('  ╔═══════════════════════════════════════════════════╗');
+  console.log('  ║         🌙 Apsara Dark — Backend Server          ║');
+  console.log('  ╠═══════════════════════════════════════════════════╣');
+  console.log(`  ║  HTTP:     http://${HOST}:${PORT}                    ║`);
+  console.log('  ║                                                   ║');
+  console.log('  ║  Live API (audio/video):                          ║');
+  console.log(`  ║    WS:     ws://${HOST}:${PORT}/live                  ║`);
+  console.log('  ║    Config: GET /config                            ║');
+  console.log('  ║                                                   ║');
+  console.log('  ║  Interactions API (text/chat):                    ║');
+  console.log(`  ║    REST:   POST /api/interactions                 ║`);
+  console.log(`  ║    Stream: POST /api/interactions/stream          ║`);
+  console.log(`  ║    WS:     ws://${HOST}:${PORT}/chat                  ║`);
+  console.log('  ║    Config: GET /api/interactions/config           ║');
+  console.log('  ║                                                   ║');
+  console.log('  ║  Health:   GET /health                            ║');
+  console.log('  ╚═══════════════════════════════════════════════════╝');
   console.log('');
-  console.log(`  Model: ${DEFAULT_SESSION_CONFIG.model}`);
-  console.log(`  Voice: ${DEFAULT_SESSION_CONFIG.voice}`);
+  console.log(`  Live Model: ${DEFAULT_SESSION_CONFIG.model}`);
+  console.log(`  Live Voice: ${DEFAULT_SESSION_CONFIG.voice}`);
+  console.log(`  Chat Model: ${DEFAULT_MODEL}`);
   console.log('');
 });
 
 // --- Graceful shutdown ---
 process.on('SIGINT', () => {
   console.log('\n[Server] Shutting down...');
-  wss.clients.forEach(ws => ws.close());
+  wssLive.clients.forEach(ws => ws.close());
+  wssInteractions.clients.forEach(ws => ws.close());
   server.close(() => {
     console.log('[Server] Goodbye.');
     process.exit(0);
@@ -109,7 +140,8 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   console.log('\n[Server] Shutting down...');
-  wss.clients.forEach(ws => ws.close());
+  wssLive.clients.forEach(ws => ws.close());
+  wssInteractions.clients.forEach(ws => ws.close());
   server.close(() => {
     process.exit(0);
   });
