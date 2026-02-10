@@ -8,13 +8,7 @@
 # Caddy will auto-provision TLS via Let's Encrypt.
 
 apsara-dark-backend.devshubh.me {
-	# Reverse proxy with immediate flush for WebSocket streaming.
-	# flush_interval -1 disables response buffering — critical for WebSocket
-	# frames to pass through without Caddy fragmenting control frames
-	# (which causes "Control frames must be final" errors).
-	reverse_proxy localhost:3012 {
-		flush_interval -1
-	}
+	reverse_proxy localhost:3012
 
 	# Allow iframe embedding for canvas render endpoints
 	@canvasRender path /api/canvas/*/render

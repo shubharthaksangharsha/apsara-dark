@@ -255,15 +255,10 @@ export function handleInteractionsWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat — NO server-side ws.ping().
-  // Caddy doesn't transparently proxy WebSocket ping/pong frames.
-  // Detect stale connections by tracking message activity.
-  let lastActivity = Date.now();
-  ws.on('message', () => { lastActivity = Date.now(); });
+  // Heartbeat
   heartbeatInterval = setInterval(() => {
-    if (Date.now() - lastActivity > 90000) {
-      console.log('[InteractionsWS] No activity for 90s — terminating');
-      ws.terminate();
+    if (ws.readyState === ws.OPEN) {
+      ws.ping();
     }
   }, 30000);
 

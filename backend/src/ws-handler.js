@@ -463,20 +463,10 @@ export function handleWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat — NO server-side ws.ping().
-  // Caddy reverse proxy doesn't transparently pass WebSocket protocol-level
-  // ping/pong frames, causing "Control frames must be final" on the client.
-  // Instead, the client sends JSON { type: "ping" } every 25s, and we respond
-  // with { type: "pong" }. Detect stale connections by checking activity.
-  let lastActivity = Date.now();
-  const origSend = send;
-  // Track activity on every incoming message
-  ws.on('message', () => { lastActivity = Date.now(); });
+  // Heartbeat to keep connection alive
   heartbeatInterval = setInterval(() => {
-    const elapsed = Date.now() - lastActivity;
-    if (elapsed > 90000) { // 90s with no messages = stale
-      console.log('[WS] No activity for 90s — terminating stale connection');
-      ws.terminate();
+    if (ws.readyState === ws.OPEN) {
+      ws.ping();
     }
   }, 30000);
 

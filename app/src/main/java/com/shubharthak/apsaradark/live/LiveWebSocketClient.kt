@@ -10,8 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.*
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
@@ -28,16 +26,10 @@ class LiveWebSocketClient {
 
     private val gson = Gson()
     private var webSocket: WebSocket? = null
-    // No pingInterval — Caddy reverse proxy doesn't transparently pass through
-    // WebSocket protocol-level ping/pong frames, which causes "Control frames
-    // must be final" errors. Instead, we use application-level JSON pings.
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(25, TimeUnit.SECONDS)
         .build()
-
-    // Application-level heartbeat (JSON ping/pong instead of WebSocket protocol pings)
-    private val heartbeatScheduler = Executors.newSingleThreadScheduledExecutor()
-    private var heartbeatFuture: ScheduledFuture<*>? = null
 
     private val _state = MutableStateFlow(ConnectionState.IDLE)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -103,8 +95,6 @@ class LiveWebSocketClient {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket opened")
                 _state.value = ConnectionState.WS_OPEN
-                // Start application-level heartbeat
-                startHeartbeat(ws)
                 // Send connect command with config
                 val msg = JsonObject().apply {
                     addProperty("type", "connect")
@@ -119,19 +109,16 @@ class LiveWebSocketClient {
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closing: $reason")
-                stopHeartbeat()
                 ws.close(1000, null)
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closed: $reason")
-                stopHeartbeat()
                 _state.value = ConnectionState.DISCONNECTED
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}")
-                stopHeartbeat()
                 _state.value = ConnectionState.ERROR
                 _error.tryEmit(t.message ?: "Connection failed")
             }
@@ -263,29 +250,10 @@ class LiveWebSocketClient {
 
     /** Disconnect */
     fun disconnect() {
-        stopHeartbeat()
         webSocket?.send("""{"type":"disconnect"}""")
         webSocket?.close(1000, "User ended session")
         webSocket = null
         _state.value = ConnectionState.IDLE
-    }
-
-    /** Start application-level JSON heartbeat every 25s */
-    private fun startHeartbeat(ws: WebSocket) {
-        stopHeartbeat()
-        heartbeatFuture = heartbeatScheduler.scheduleAtFixedRate({
-            try {
-                ws.send("""{"type":"ping"}""")
-            } catch (e: Exception) {
-                Log.w(TAG, "Heartbeat send failed: ${e.message}")
-            }
-        }, 25, 25, TimeUnit.SECONDS)
-    }
-
-    /** Stop heartbeat */
-    private fun stopHeartbeat() {
-        heartbeatFuture?.cancel(false)
-        heartbeatFuture = null
     }
 
     fun isConnected(): Boolean = _state.value == ConnectionState.LIVE_CONNECTED
