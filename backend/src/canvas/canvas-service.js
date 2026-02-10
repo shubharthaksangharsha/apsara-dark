@@ -41,9 +41,20 @@ Your mission: Generate complete, self-contained, single-file web applications us
 6. Dark theme by default with a modern aesthetic (matching Apsara Dark's style).
 7. You can use inline SVGs for icons — do NOT use external CDN links unless the user explicitly asks for a library.
 8. If the user asks for React, include React and ReactDOM via CDN (unpkg), use JSX via Babel standalone, and render into a root div.
-9. The app must be fully functional — no placeholder text like "TODO" or "coming soon".
+9. The app must be fully functional — no placeholder text like "TODO" or "come soon".
 10. Include proper error handling in JavaScript.
 11. Output ONLY the HTML code — no markdown, no backticks, no explanation. Start with <!DOCTYPE html> and end with </html>.
+
+**CRITICAL — Mobile-First Responsive Design:**
+- ALWAYS include this meta tag in <head>: <meta name="viewport" content="width=device-width, initial-scale=1.0">
+- The app MUST work perfectly on mobile phones (360px wide) AND desktops.
+- Use CSS media queries for different screen sizes.
+- For multi-panel/split layouts: use a STACKED layout on mobile (flex-direction: column) and side-by-side on desktop (@media (min-width: 768px) { flex-direction: row }).
+- Use percentage widths or CSS Grid/Flexbox instead of fixed pixel widths.
+- All text must be readable without zooming (minimum 14px font size).
+- All buttons/interactive elements must be at least 44x44px touch targets on mobile.
+- Use max-width: 100% and box-sizing: border-box on all elements.
+- Avoid horizontal scrolling — everything must fit within the viewport width.
 
 **Style Guidelines:**
 - Primary background: #0D0D0D to #1A1A1A
@@ -51,7 +62,8 @@ Your mission: Generate complete, self-contained, single-file web applications us
 - Text: #E8E8E8 (primary), #9E9E9E (secondary)
 - Border radius: 12-16px for cards, 8px for buttons
 - Font: system-ui, -apple-system, sans-serif
-- Smooth hover transitions (0.2s ease)`;
+- Smooth hover transitions (0.2s ease)
+- Use \`* { box-sizing: border-box; }\` and \`body { margin: 0; overflow-x: hidden; }\``;
 
 export class CanvasService {
   constructor(apiKey) {

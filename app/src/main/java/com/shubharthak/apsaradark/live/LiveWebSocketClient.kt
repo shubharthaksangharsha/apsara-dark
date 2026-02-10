@@ -79,6 +79,15 @@ class LiveWebSocketClient {
     private val _goAway = MutableSharedFlow<GoAwayEvent>(extraBufferCapacity = 4)
     val goAway = _goAway.asSharedFlow()
 
+    // Canvas progress — tracks canvas app generation progress
+    data class CanvasProgressEvent(
+        val toolCallId: String,
+        val status: String,   // "generating" | "testing" | "fixing" | "ready" | "error"
+        val message: String
+    )
+    private val _canvasProgress = MutableSharedFlow<CanvasProgressEvent>(extraBufferCapacity = 16)
+    val canvasProgress = _canvasProgress.asSharedFlow()
+
     /**
      * Connect WebSocket and immediately send "connect" with the live config.
      */
@@ -213,6 +222,13 @@ class LiveWebSocketClient {
                     val timeLeft = json.get("timeLeft")?.asString ?: "unknown"
                     Log.w(TAG, "GoAway received: timeLeft=$timeLeft")
                     _goAway.tryEmit(GoAwayEvent(timeLeft))
+                }
+                "canvas_progress" -> {
+                    val toolCallId = json.get("tool_call_id")?.asString ?: ""
+                    val status = json.get("status")?.asString ?: "unknown"
+                    val message = json.get("message")?.asString ?: ""
+                    Log.d(TAG, "Canvas progress: status=$status, message=$message")
+                    _canvasProgress.tryEmit(CanvasProgressEvent(toolCallId, status, message))
                 }
             }
         } catch (e: Exception) {

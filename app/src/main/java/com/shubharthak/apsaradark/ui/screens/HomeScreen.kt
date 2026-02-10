@@ -1,6 +1,10 @@
 package com.shubharthak.apsaradark.ui.screens
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.VibrationEffect
@@ -33,7 +37,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.shubharthak.apsaradark.MainActivity
+import com.shubharthak.apsaradark.R
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.data.MockData
 import com.shubharthak.apsaradark.live.ActiveSpeaker
@@ -225,6 +232,75 @@ fun HomeScreen(
 
     val isLiveActive = liveViewModel.liveState != LiveSessionViewModel.LiveState.IDLE
 
+    // ─── Canvas notification: Snackbar + system notification ─────────
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Create notification channel for canvas (once)
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "apsara_canvas",
+                "Canvas Apps",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Notifies when an Apsara Canvas app has been created"
+            }
+            val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+    }
+
+    // Observe canvas notifications from the ViewModel
+    LaunchedEffect(Unit) {
+        liveViewModel.canvasNotification.collect { notification ->
+            if (notification.status == "ready") {
+                // Show in-app Snackbar
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "✨ ${notification.title}",
+                        actionLabel = "Open Canvas",
+                        duration = SnackbarDuration.Long
+                    ).let { result ->
+                        if (result == SnackbarResult.ActionPerformed) {
+                            onNavigateToCanvas()
+                        }
+                    }
+                }
+                // Also show a system notification
+                try {
+                    val tapIntent = PendingIntent.getActivity(
+                        context,
+                        100,
+                        Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("navigate_to", "canvas")
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val notif = NotificationCompat.Builder(context, "apsara_canvas")
+                        .setSmallIcon(R.mipmap.ic_launcher)
+                        .setContentTitle("Canvas App Ready")
+                        .setContentText(notification.title)
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .setAutoCancel(true)
+                        .setContentIntent(tapIntent)
+                        .build()
+                    val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.notify(2000 + System.currentTimeMillis().toInt() % 1000, notif)
+                } catch (e: Exception) {
+                    // Ignore notification errors (permission not granted, etc.)
+                }
+            } else if (notification.status == "error") {
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = "❌ Canvas failed: ${notification.title}",
+                        duration = SnackbarDuration.Short
+                    )
+                }
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -254,6 +330,17 @@ fun HomeScreen(
         Scaffold(
             containerColor = palette.surface,
             modifier = Modifier.imePadding(),
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState) { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        containerColor = palette.surfaceContainer,
+                        contentColor = palette.textPrimary,
+                        actionColor = palette.accent,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
             topBar = {
                 AnimatedVisibility(
                     visible = !isLiveActive,

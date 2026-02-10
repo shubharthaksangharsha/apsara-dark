@@ -12,6 +12,8 @@ import androidx.lifecycle.viewModelScope
 import com.shubharthak.apsaradark.data.LiveSettingsManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -137,6 +139,11 @@ class LiveSessionViewModel(
     private var pendingGoAwayReconnect = false
     private var goAwayMessageIndex = -1
     private var goAwayTimeoutJob: Job? = null
+
+    // Canvas notification — emits the title of the canvas when it becomes ready
+    data class CanvasNotification(val title: String, val status: String)
+    private val _canvasNotification = MutableSharedFlow<CanvasNotification>(extraBufferCapacity = 8)
+    val canvasNotification = _canvasNotification.asSharedFlow()
 
     // Accumulator for streaming output transcription
     private var currentOutputBuffer = StringBuilder()
@@ -428,6 +435,20 @@ class LiveSessionViewModel(
                             stopLive()
                         }
                     }
+                }
+            }
+        }.launchIn(viewModelScope)
+
+        // Canvas progress — track canvas generation and emit notification when ready
+        wsClient.canvasProgress.onEach { event ->
+            Log.d(TAG, "Canvas progress: status=${event.status}, message=${event.message}")
+            when (event.status) {
+                "ready" -> {
+                    // Canvas app is ready — emit notification
+                    _canvasNotification.tryEmit(CanvasNotification(event.message, "ready"))
+                }
+                "error" -> {
+                    _canvasNotification.tryEmit(CanvasNotification(event.message, "error"))
                 }
             }
         }.launchIn(viewModelScope)

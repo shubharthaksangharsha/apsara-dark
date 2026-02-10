@@ -133,7 +133,24 @@ export function createCanvasRouter(apiKey) {
     res.setHeader('X-Frame-Options', 'ALLOWALL');
     res.removeHeader('X-Frame-Options'); // Allow iframe embedding
     res.setHeader('Content-Security-Policy', "frame-ancestors *");
-    res.send(app.html);
+
+    // Inject viewport meta tag if missing — ensures mobile-friendly rendering
+    // even for apps generated before the mobile-first system instruction was added
+    let html = app.html;
+    if (html && !html.includes('name="viewport"') && !html.includes("name='viewport'")) {
+      html = html.replace(
+        /<head([^>]*)>/i,
+        `<head$1>\n<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`
+      );
+    }
+    // Also inject a mobile-fix CSS reset if not present
+    if (html && !html.includes('overflow-x: hidden') && !html.includes('overflow-x:hidden')) {
+      html = html.replace(
+        /<head([^>]*)>/i,
+        `<head$1>\n<style>*, *::before, *::after { box-sizing: border-box; } body { margin: 0; overflow-x: hidden; }</style>`
+      );
+    }
+    res.send(html);
   });
 
   // ─── DELETE /api/canvas/:id ───────────────────────────────────────────────

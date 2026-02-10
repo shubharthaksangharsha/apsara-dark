@@ -473,16 +473,49 @@ private fun CanvasViewer(
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
-                        webViewClient = WebViewClient()
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             allowContentAccess = true
                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            // Critical: useWideViewPort + loadWithOverviewMode together
+                            // make the WebView respect <meta viewport> properly.
+                            // If the page has viewport meta → renders at device width.
+                            // If the page is desktop-only → scales down to fit (overview mode).
                             useWideViewPort = true
                             loadWithOverviewMode = true
+                            // Enable zoom so users can pinch-zoom desktop-designed apps
                             builtInZoomControls = true
                             displayZoomControls = false
+                            setSupportZoom(true)
+                            // Force mobile-friendly text size
+                            textZoom = 100
+                            // Allow file access for inline data
+                            @Suppress("DEPRECATION")
+                            allowFileAccess = true
+                        }
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                // Inject viewport meta tag + mobile CSS fixes if missing.
+                                // The backend also injects these server-side, but this is
+                                // a safety net for cached pages or direct URL loading.
+                                view?.evaluateJavascript("""
+                                    (function() {
+                                        // 1. Ensure viewport meta tag exists
+                                        if (!document.querySelector('meta[name="viewport"]')) {
+                                            var meta = document.createElement('meta');
+                                            meta.name = 'viewport';
+                                            meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+                                            document.head.appendChild(meta);
+                                        }
+                                        // 2. Inject mobile CSS reset to prevent horizontal overflow
+                                        var style = document.createElement('style');
+                                        style.textContent = '*, *::before, *::after { box-sizing: border-box !important; } body { margin: 0; overflow-x: hidden; max-width: 100vw; } img, video, canvas, svg { max-width: 100%; height: auto; }';
+                                        document.head.appendChild(style);
+                                    })();
+                                """.trimIndent(), null)
+                            }
                         }
                         setBackgroundColor(android.graphics.Color.parseColor("#0D0D0D"))
                         loadUrl(app.renderUrl)
