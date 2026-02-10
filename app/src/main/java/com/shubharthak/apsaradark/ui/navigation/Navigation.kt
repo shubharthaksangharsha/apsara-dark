@@ -85,9 +85,9 @@ fun AppNavigation(
         composable(Routes.CANVAS) {
             CanvasScreen(
                 onBack = {
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("openDrawer", true)
+                    // Don't open the drawer when returning from Canvas —
+                    // Canvas can be opened via Snackbar during a live session,
+                    // so we should go straight back to the live view.
                     navController.popBackStack()
                 }
             )
