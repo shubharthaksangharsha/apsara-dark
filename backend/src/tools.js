@@ -45,6 +45,47 @@ export const TOOL_DECLARATIONS = [
       required: ['prompt'],
     },
   },
+  {
+    name: 'list_canvases',
+    description: 'Lists all canvas apps created by Apsara Canvas. Returns their IDs, titles, descriptions, status, and creation dates. Use this when the user asks to see, list, or check their canvas apps, their creations, or what apps exist.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_canvas_detail',
+    description: 'Gets the full detail of a canvas app by ID, including the HTML source code, the original prompt, generation log (steps, timestamps, attempts), and metadata. Use this when the user wants to see the code of a canvas app, understand how it was built, or review the generation history.',
+    parameters: {
+      type: 'object',
+      properties: {
+        canvas_id: {
+          type: 'string',
+          description: 'The ID of the canvas app to retrieve details for. Get this from list_canvases.',
+        },
+      },
+      required: ['canvas_id'],
+    },
+  },
+  {
+    name: 'edit_canvas',
+    description: 'Edits and improves an existing canvas app. Reads the current code and metadata, then regenerates the app based on the edit instructions. Use this when the user asks to edit, update, improve, refine, fix, change, or modify an existing canvas app. You MUST call list_canvases first to get the canvas_id, then call this tool with the canvas_id and the edit instructions.',
+    parameters: {
+      type: 'object',
+      properties: {
+        canvas_id: {
+          type: 'string',
+          description: 'The ID of the canvas app to edit. Get this from list_canvases.',
+        },
+        instructions: {
+          type: 'string',
+          description: 'Detailed instructions on what to change, improve, add, or fix in the app. Be specific about the desired changes.',
+        },
+      },
+      required: ['canvas_id', 'instructions'],
+    },
+  },
 ];
 
 // ─── Tool Handlers ──────────────────────────────────────────────────────────
@@ -73,6 +114,40 @@ export function executeTool(name, args = {}) {
         uptime: `${hours}h ${minutes}m ${seconds}s`,
         node_version: process.version,
         platform: process.platform,
+      };
+    }
+
+    case 'list_canvases': {
+      const summaries = canvasStore.getSummaries();
+      return {
+        success: true,
+        count: summaries.length,
+        apps: summaries,
+        message: summaries.length === 0
+          ? 'No canvas apps have been created yet.'
+          : `Found ${summaries.length} canvas app(s).`,
+      };
+    }
+
+    case 'get_canvas_detail': {
+      const canvasId = args.canvas_id;
+      if (!canvasId) {
+        return { success: false, error: 'canvas_id is required' };
+      }
+      const detail = canvasStore.getDetail(canvasId);
+      if (!detail) {
+        return { success: false, error: `Canvas not found: ${canvasId}` };
+      }
+      // Truncate HTML if very long to avoid blowing up Gemini context
+      const truncatedHtml = detail.html && detail.html.length > 8000
+        ? detail.html.substring(0, 8000) + `\n\n... [truncated — full code is ${detail.html_length} chars]`
+        : detail.html;
+      return {
+        success: true,
+        app: {
+          ...detail,
+          html: truncatedHtml,
+        },
       };
     }
 
@@ -127,10 +202,58 @@ export async function executeCanvasTool(args = {}, onProgress) {
 }
 
 /**
+ * Execute the edit_canvas tool asynchronously.
+ * Reads existing canvas code and applies edit instructions.
+ * 
+ * @param {Object} args - { canvas_id, instructions }
+ * @param {Function} onProgress - Callback for progress updates sent to client
+ * @returns {Promise<Object>} Result to send back to Gemini
+ */
+export async function executeCanvasEditTool(args = {}, onProgress) {
+  if (!canvasService) {
+    return { success: false, error: 'Canvas service not initialized' };
+  }
+
+  const { canvas_id, instructions } = args;
+  if (!canvas_id) {
+    return { success: false, error: 'canvas_id is required' };
+  }
+  if (!instructions) {
+    return { success: false, error: 'instructions is required' };
+  }
+
+  try {
+    const app = await canvasService.editApp({
+      canvasId: canvas_id,
+      instructions,
+      onProgress: (status, message) => {
+        console.log(`[Canvas Edit Tool] ${status}: ${message}`);
+        onProgress?.(status, message);
+      },
+    });
+
+    return {
+      success: true,
+      canvas_id: app.id,
+      title: app.title,
+      status: app.status,
+      error: app.error || null,
+      message: app.status === 'ready'
+        ? `I've updated "${app.title}" for you! Check it in My Canvas.`
+        : `There was an issue editing the app: ${app.error}`,
+      render_url: `/api/canvas/${app.id}/render`,
+    };
+  } catch (error) {
+    console.error('[Canvas Edit Tool] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Check if a tool requires async execution (takes significant time).
  */
 export function isLongRunningTool(name) {
-  return name === 'apsara_canvas';
+  return name === 'apsara_canvas' || name === 'edit_canvas';
 }
 
 /**

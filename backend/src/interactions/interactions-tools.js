@@ -9,6 +9,20 @@
  */
 
 import { canvasStore } from '../canvas/canvas-store.js';
+import { CanvasService, CANVAS_DEFAULTS } from '../canvas/canvas-service.js';
+
+// Canvas service instance — initialized lazily
+let canvasService = null;
+
+function getCanvasService() {
+  if (!canvasService) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      canvasService = new CanvasService(apiKey);
+    }
+  }
+  return canvasService;
+}
 
 // ─── Function Tool Declarations ─────────────────────────────────────────────
 
@@ -63,6 +77,25 @@ export const FUNCTION_TOOLS = [
       required: ['canvas_id'],
     },
   },
+  {
+    type: 'function',
+    name: 'edit_canvas',
+    description: 'Edits and improves an existing canvas app. Reads the current code and metadata, then regenerates the app based on the edit instructions. Use this when the user asks to edit, update, improve, refine, fix, or modify an existing canvas app.',
+    parameters: {
+      type: 'object',
+      properties: {
+        canvas_id: {
+          type: 'string',
+          description: 'The ID of the canvas app to edit. Get this from list_canvases.',
+        },
+        instructions: {
+          type: 'string',
+          description: 'Detailed instructions on what to change, improve, add, or fix in the app.',
+        },
+      },
+      required: ['canvas_id', 'instructions'],
+    },
+  },
 ];
 
 // ─── Function Tool Handlers ─────────────────────────────────────────────────
@@ -71,7 +104,7 @@ export const FUNCTION_TOOLS = [
  * Execute a function tool by name with given arguments.
  * Returns the result string to send back to the model as function_result.
  */
-export function executeFunction(name, args = {}) {
+export async function executeFunction(name, args = {}) {
   switch (name) {
     case 'get_current_time': {
       const now = new Date();
@@ -131,6 +164,35 @@ export function executeFunction(name, args = {}) {
           html: truncatedHtml,
         },
       });
+    }
+
+    case 'edit_canvas': {
+      const editCanvasId = args.canvas_id;
+      const instructions = args.instructions;
+      if (!editCanvasId) {
+        return JSON.stringify({ success: false, error: 'canvas_id is required' });
+      }
+      if (!instructions) {
+        return JSON.stringify({ success: false, error: 'instructions is required' });
+      }
+      const service = getCanvasService();
+      if (!service) {
+        return JSON.stringify({ success: false, error: 'Canvas service not available' });
+      }
+      try {
+        const app = await service.editApp({ canvasId: editCanvasId, instructions });
+        return JSON.stringify({
+          success: true,
+          canvas_id: app.id,
+          title: app.title,
+          status: app.status,
+          message: app.status === 'ready'
+            ? `Updated "${app.title}" successfully!`
+            : `Edit had issues: ${app.error}`,
+        });
+      } catch (err) {
+        return JSON.stringify({ success: false, error: err.message });
+      }
     }
 
     default:

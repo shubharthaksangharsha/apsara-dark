@@ -277,7 +277,7 @@ export class InteractionsService {
       const functionResults = [];
       for (const fc of functionCalls) {
         console.log(`[Interactions] Executing: ${fc.name}(${JSON.stringify(fc.arguments || {})})`);
-        const result = executeFunction(fc.name, fc.arguments || {});
+        const result = await executeFunction(fc.name, fc.arguments || {});
         console.log(`[Interactions] Result: ${result}`);
 
         functionResults.push({

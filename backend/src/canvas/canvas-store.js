@@ -73,6 +73,11 @@ class CanvasStore {
         attempts: updates.attempts || app.attempts,
       });
     }
+    // Track edit history — when html changes with a prompt that differs
+    if (updates.html && updates.status === 'ready' && app.prompt) {
+      if (!app.edit_count) app.edit_count = 0;
+      app.edit_count++;
+    }
     Object.assign(app, updates, { updated_at: now });
     return app;
   }

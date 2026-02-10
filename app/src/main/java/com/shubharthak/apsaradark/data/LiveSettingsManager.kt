@@ -141,7 +141,11 @@ class LiveSettingsManager(context: Context) {
         }
         if (toolCanvas) {
             enabledTools.add("apsara_canvas")
+            enabledTools.add("list_canvases")
+            enabledTools.add("get_canvas_detail")
+            enabledTools.add("edit_canvas")
             toolAsyncModes["apsara_canvas"] = toolCanvasAsync
+            toolAsyncModes["edit_canvas"] = toolCanvasAsync
         }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools

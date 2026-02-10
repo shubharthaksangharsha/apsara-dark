@@ -41,7 +41,7 @@
 
 import { GeminiLiveSession } from './gemini-live-session.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
-import { executeTool, executeCanvasTool, isLongRunningTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
+import { executeTool, executeCanvasTool, executeCanvasEditTool, isLongRunningTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
 
 export function handleWebSocket(ws, apiKey) {
   let geminiSession = null;
@@ -161,15 +161,18 @@ export function handleWebSocket(ws, apiKey) {
               console.log(`[WS] [SYNC] ${syncResponses.length} tool response(s) sent`);
             }
 
-            // Execute long-running sync tools (like canvas) asynchronously but still respond as sync
+            // Execute long-running sync tools (like canvas create/edit) asynchronously but still respond as sync
             for (const fc of longRunningSync) {
               console.log(`[WS] [SYNC-LONG] Executing long-running tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-              send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: `Creating app...` });
+              send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: `Processing...` });
               
               try {
-                const result = await executeCanvasTool(fc.args || {}, (status, message) => {
+                const progressCb = (status, message) => {
                   send({ type: 'canvas_progress', tool_call_id: fc.id, status, message });
-                });
+                };
+                const result = fc.name === 'edit_canvas'
+                  ? await executeCanvasEditTool(fc.args || {}, progressCb)
+                  : await executeCanvasTool(fc.args || {}, progressCb);
                 console.log(`[WS] [SYNC-LONG] Tool result (${fc.name}):`, JSON.stringify(result));
                 const response = { id: fc.id, name: fc.name, response: result };
                 geminiSession.sendToolResponse([response]);
@@ -192,11 +195,14 @@ export function handleWebSocket(ws, apiKey) {
                 
                 let result;
                 if (isLongRunningTool(fc.name)) {
-                  // Long-running async tool (e.g., canvas)
-                  send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: 'Creating app...' });
-                  result = await executeCanvasTool(fc.args || {}, (status, message) => {
+                  // Long-running async tool (e.g., canvas create or edit)
+                  send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: 'Processing...' });
+                  const progressCb = (status, message) => {
                     send({ type: 'canvas_progress', tool_call_id: fc.id, status, message });
-                  });
+                  };
+                  result = fc.name === 'edit_canvas'
+                    ? await executeCanvasEditTool(fc.args || {}, progressCb)
+                    : await executeCanvasTool(fc.args || {}, progressCb);
                 } else {
                   result = executeTool(fc.name, fc.args || {});
                 }

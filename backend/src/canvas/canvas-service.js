@@ -148,6 +148,106 @@ export class CanvasService {
   }
 
   /**
+   * Edit an existing canvas app based on instructions.
+   * Reads the current code and metadata, regenerates with edit instructions.
+   * 
+   * @param {Object} params
+   * @param {string} params.canvasId - ID of the canvas to edit
+   * @param {string} params.instructions - What to change/improve
+   * @param {Object} [params.config] - Override default config
+   * @param {Function} [params.onProgress] - Progress callback
+   * @returns {Promise<Object>} The updated canvas app
+   */
+  async editApp({ canvasId, instructions, config = {}, onProgress }) {
+    const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
+    
+    // Get the existing canvas
+    const existing = canvasStore.get(canvasId);
+    if (!existing) {
+      throw new Error(`Canvas not found: ${canvasId}`);
+    }
+
+    onProgress?.('generating', `Editing "${existing.title}"...`);
+
+    // Log the edit start
+    canvasStore.update(canvasId, { status: 'generating' });
+
+    try {
+      // Build the edit prompt with full context
+      const editPrompt = this._buildEditPrompt(existing, instructions);
+
+      // Generate the updated code
+      let html = await this._generate(editPrompt, mergedConfig);
+      canvasStore.update(canvasId, { html, status: 'testing', attempts: (existing.attempts || 0) + 1 });
+      onProgress?.('testing', 'Validating edited code...');
+
+      // Validate and auto-fix loop
+      const maxAttempts = 3;
+      let attempt = 1;
+
+      while (attempt <= maxAttempts) {
+        const errors = this._validateHtml(html);
+        
+        if (errors.length === 0) {
+          canvasStore.update(canvasId, { html, status: 'ready', error: null });
+          onProgress?.('ready', `"${existing.title}" has been updated!`);
+          return canvasStore.get(canvasId);
+        }
+
+        if (attempt >= maxAttempts) {
+          canvasStore.update(canvasId, { 
+            html, 
+            status: 'ready', 
+            error: `Validation warnings after edit (served anyway): ${errors.join('; ')}` 
+          });
+          onProgress?.('ready', `"${existing.title}" updated (with minor warnings)`);
+          return canvasStore.get(canvasId);
+        }
+
+        attempt++;
+        canvasStore.update(canvasId, { status: 'fixing', attempts: (existing.attempts || 0) + attempt });
+        onProgress?.('fixing', `Fixing issues (attempt ${attempt}/${maxAttempts})...`);
+
+        html = await this._fix(html, errors, existing.prompt + '\n\nEdit: ' + instructions, mergedConfig);
+        canvasStore.update(canvasId, { html });
+      }
+
+      return canvasStore.get(canvasId);
+    } catch (error) {
+      console.error('[Canvas] Edit error:', error.message);
+      canvasStore.update(canvasId, { 
+        status: 'error', 
+        error: error.message 
+      });
+      onProgress?.('error', `Edit failed: ${error.message}`);
+      return canvasStore.get(canvasId);
+    }
+  }
+
+  /**
+   * Build a prompt for editing an existing canvas app.
+   * Includes the current code, original prompt, and edit instructions.
+   */
+  _buildEditPrompt(existingApp, instructions) {
+    const parts = [];
+    
+    parts.push(`You previously built this web app titled "${existingApp.title}".`);
+    
+    if (existingApp.prompt) {
+      parts.push(`\nOriginal request: "${existingApp.prompt}"`);
+    }
+    
+    if (existingApp.html) {
+      parts.push(`\nHere is the CURRENT complete code of the app:\n\`\`\`html\n${existingApp.html}\n\`\`\``);
+    }
+    
+    parts.push(`\nThe user wants the following changes:\n${instructions}`);
+    parts.push(`\nApply the requested changes to the existing code. Keep everything that works well, and only change/add/remove what's needed to fulfill the edit request. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`);
+    
+    return parts.join('\n');
+  }
+
+  /**
    * Generate HTML using the Interactions API (streaming, collected).
    */
   async _generate(prompt, config) {

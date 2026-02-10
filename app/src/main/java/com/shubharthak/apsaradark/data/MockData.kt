@@ -81,7 +81,7 @@ object MockData {
         PluginInfo(
             id = "apsara_canvas",
             title = "Apsara Canvas",
-            description = "Creates web apps with HTML, CSS, JS & React"
+            description = "Create, list, view, and edit web apps with HTML, CSS, JS & React"
         ),
     )
 }
