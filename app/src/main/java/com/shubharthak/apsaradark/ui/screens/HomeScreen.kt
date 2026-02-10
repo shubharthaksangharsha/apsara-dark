@@ -50,7 +50,8 @@ fun HomeScreen(
     liveViewModel: LiveSessionViewModel,
     openDrawerOnReturn: Boolean = false,
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToPlugins: () -> Unit = {}
+    onNavigateToPlugins: () -> Unit = {},
+    onNavigateToCanvas: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -238,6 +239,7 @@ fun HomeScreen(
                         when (item.title) {
                             "Settings" -> onNavigateToSettings()
                             "My Plugins" -> onNavigateToPlugins()
+                            "My Canvas" -> onNavigateToCanvas()
                         }
                     },
                     onClose = {

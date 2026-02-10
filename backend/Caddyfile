@@ -10,7 +10,18 @@
 apsara-dark-backend.devshubh.me {
 	reverse_proxy localhost:3012
 
-	header {
+	# Allow iframe embedding for canvas render endpoints
+	@canvasRender path /api/canvas/*/render
+	header @canvasRender {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-X-Frame-Options
+		Content-Security-Policy "frame-ancestors *"
+	}
+
+	# Default headers for everything else
+	@notCanvas not path /api/canvas/*/render
+	header @notCanvas {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin

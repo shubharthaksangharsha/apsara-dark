@@ -69,6 +69,13 @@ class LiveSettingsManager(context: Context) {
     var toolServerInfoAsync by mutableStateOf(prefs.getBoolean("tool_server_info_async", false))
         private set
 
+    // Apsara Canvas plugin
+    var toolCanvas by mutableStateOf(prefs.getBoolean("tool_canvas", true))
+        private set
+
+    var toolCanvasAsync by mutableStateOf(prefs.getBoolean("tool_canvas_async", true))
+        private set
+
     // Media resolution for video/image input (LOW, MEDIUM, HIGH)
     var mediaResolution by mutableStateOf(prefs.getString("media_resolution", "MEDIUM") ?: "MEDIUM")
         private set
@@ -94,6 +101,8 @@ class LiveSettingsManager(context: Context) {
     fun updateIncludeThoughts(v: Boolean) { includeThoughts = v; prefs.edit().putBoolean("include_thoughts", v).apply() }
     fun updateToolServerInfo(v: Boolean) { toolServerInfo = v; prefs.edit().putBoolean("tool_server_info", v).apply() }
     fun updateToolServerInfoAsync(v: Boolean) { toolServerInfoAsync = v; prefs.edit().putBoolean("tool_server_info_async", v).apply() }
+    fun updateToolCanvas(v: Boolean) { toolCanvas = v; prefs.edit().putBoolean("tool_canvas", v).apply() }
+    fun updateToolCanvasAsync(v: Boolean) { toolCanvasAsync = v; prefs.edit().putBoolean("tool_canvas_async", v).apply() }
     fun updateMediaResolution(v: String) { mediaResolution = v; prefs.edit().putString("media_resolution", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
@@ -130,6 +139,10 @@ class LiveSettingsManager(context: Context) {
             enabledTools.add("get_server_info")
             toolAsyncModes["get_server_info"] = toolServerInfoAsync
         }
+        if (toolCanvas) {
+            enabledTools.add("apsara_canvas")
+            toolAsyncModes["apsara_canvas"] = toolCanvasAsync
+        }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools
             config["toolAsyncModes"] = toolAsyncModes
@@ -139,7 +152,7 @@ class LiveSettingsManager(context: Context) {
     }
 
     /** Check if any plugin tool is enabled */
-    fun hasAnyToolEnabled(): Boolean = toolServerInfo
+    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCanvas
 
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")

@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
+import com.shubharthak.apsaradark.ui.screens.CanvasScreen
 import com.shubharthak.apsaradark.ui.screens.HomeScreen
 import com.shubharthak.apsaradark.ui.screens.PluginsScreen
 import com.shubharthak.apsaradark.ui.screens.SettingsScreen
@@ -17,6 +18,7 @@ object Routes {
     const val HOME = "home"
     const val SETTINGS = "settings"
     const val PLUGINS = "plugins"
+    const val CANVAS = "canvas"
 }
 
 @Composable
@@ -53,6 +55,9 @@ fun AppNavigation(
                 },
                 onNavigateToPlugins = {
                     navController.navigate(Routes.PLUGINS)
+                },
+                onNavigateToCanvas = {
+                    navController.navigate(Routes.CANVAS)
                 }
             )
         }
@@ -69,6 +74,16 @@ fun AppNavigation(
         }
         composable(Routes.PLUGINS) {
             PluginsScreen(
+                onBack = {
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("openDrawer", true)
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.CANVAS) {
+            CanvasScreen(
                 onBack = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle

@@ -255,12 +255,17 @@ export function handleInteractionsWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat
+  // Heartbeat — rely on client-side ping (OkHttp pingInterval).
+  // Do NOT send server-side ws.ping() to avoid "Control frames must be final" errors.
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   heartbeatInterval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      ws.ping();
+    if (!ws.isAlive) {
+      console.log('[InteractionsWS] Client heartbeat timeout — terminating');
+      return ws.terminate();
     }
-  }, 30000);
+    ws.isAlive = false;
+  }, 60000);
 
   // Cleanup
   ws.on('close', () => {

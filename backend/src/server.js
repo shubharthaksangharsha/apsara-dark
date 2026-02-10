@@ -14,10 +14,11 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { handleWebSocket } from './ws-handler.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
-import { TOOL_DECLARATIONS } from './tools.js';
+import { TOOL_DECLARATIONS, initCanvasService } from './tools.js';
 import { createInteractionsRouter } from './interactions/interactions-router.js';
 import { handleInteractionsWebSocket } from './interactions/interactions-ws-handler.js';
 import { DEFAULT_MODEL } from './interactions/interactions-config.js';
+import { createCanvasRouter } from './canvas/canvas-router.js';
 
 // --- Environment ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -28,6 +29,9 @@ if (!GEMINI_API_KEY || GEMINI_API_KEY === 'your_gemini_api_key_here') {
   console.error('❌ GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.');
   process.exit(1);
 }
+
+// Initialize Canvas service with API key
+initCanvasService(GEMINI_API_KEY);
 
 // --- Express app (health & config endpoints) ---
 const app = express();
@@ -70,6 +74,9 @@ app.get('/config', (req, res) => {
 
 // --- Interactions API (text/chat endpoints) ---
 app.use('/api/interactions', createInteractionsRouter(GEMINI_API_KEY));
+
+// --- Canvas API (app generation endpoints) ---
+app.use('/api/canvas', createCanvasRouter(GEMINI_API_KEY));
 
 // --- HTTP + WebSocket server ---
 const server = createServer(app);
@@ -119,6 +126,10 @@ server.listen(PORT, HOST, () => {
   console.log('  ║    Config: GET /api/interactions/config           ║');
   console.log('  ║                                                   ║');
   console.log('  ║  Health:   GET /health                            ║');
+  console.log('  ║                                                   ║');
+  console.log('  ║  Canvas API (app generation):                     ║');
+  console.log(`  ║    REST:   /api/canvas                            ║`);
+  console.log(`  ║    Render: /api/canvas/:id/render                 ║`);
   console.log('  ╚═══════════════════════════════════════════════════╝');
   console.log('');
   console.log(`  Live Model: ${DEFAULT_SESSION_CONFIG.model}`);

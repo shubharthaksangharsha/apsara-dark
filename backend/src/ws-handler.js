@@ -41,7 +41,7 @@
 
 import { GeminiLiveSession } from './gemini-live-session.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
-import { executeTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
+import { executeTool, executeCanvasTool, isLongRunningTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
 
 export function handleWebSocket(ws, apiKey) {
   let geminiSession = null;
@@ -50,10 +50,14 @@ export function handleWebSocket(ws, apiKey) {
 
   console.log('[WS] Client connected');
 
-  // Send helper
+  // Send helper — guard against sending on non-OPEN connections
   function send(msg) {
     if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(msg));
+      try {
+        ws.send(JSON.stringify(msg));
+      } catch (err) {
+        console.error('[WS] Send error:', err.message);
+      }
     }
   }
 
@@ -118,7 +122,7 @@ export function handleWebSocket(ws, apiKey) {
       onGenerationComplete: () => {
         send({ type: 'generation_complete' });
       },
-      onToolCall: ({ functionCalls }) => {
+      onToolCall: async ({ functionCalls }) => {
         // Notify client about the tool call
         send({ type: 'tool_call', functionCalls });
 
@@ -135,20 +139,48 @@ export function handleWebSocket(ws, apiKey) {
 
           // ── Handle SYNC tools: execute sequentially, responses without scheduling ──
           if (syncCalls.length > 0) {
-            console.log(`[WS] Executing ${syncCalls.length} tool(s) SYNC...`);
-            const syncResponses = syncCalls.map(fc => {
-              console.log(`[WS] [SYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-              const result = executeTool(fc.name, fc.args || {});
-              console.log(`[WS] [SYNC] Tool result (${fc.name}):`, JSON.stringify(result));
-              return {
-                id: fc.id,
-                name: fc.name,
-                response: result,
-              };
-            });
-            geminiSession.sendToolResponse(syncResponses);
-            send({ type: 'tool_results', results: syncResponses, mode: 'sync' });
-            console.log(`[WS] [SYNC] ${syncResponses.length} tool response(s) sent`);
+            // Separate long-running tools (like canvas) from instant tools
+            const instantSync = syncCalls.filter(fc => !isLongRunningTool(fc.name));
+            const longRunningSync = syncCalls.filter(fc => isLongRunningTool(fc.name));
+
+            // Execute instant sync tools immediately
+            if (instantSync.length > 0) {
+              console.log(`[WS] Executing ${instantSync.length} instant SYNC tool(s)...`);
+              const syncResponses = instantSync.map(fc => {
+                console.log(`[WS] [SYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+                const result = executeTool(fc.name, fc.args || {});
+                console.log(`[WS] [SYNC] Tool result (${fc.name}):`, JSON.stringify(result));
+                return {
+                  id: fc.id,
+                  name: fc.name,
+                  response: result,
+                };
+              });
+              geminiSession.sendToolResponse(syncResponses);
+              send({ type: 'tool_results', results: syncResponses, mode: 'sync' });
+              console.log(`[WS] [SYNC] ${syncResponses.length} tool response(s) sent`);
+            }
+
+            // Execute long-running sync tools (like canvas) asynchronously but still respond as sync
+            for (const fc of longRunningSync) {
+              console.log(`[WS] [SYNC-LONG] Executing long-running tool: ${fc.name}`, JSON.stringify(fc.args || {}));
+              send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: `Creating app...` });
+              
+              try {
+                const result = await executeCanvasTool(fc.args || {}, (status, message) => {
+                  send({ type: 'canvas_progress', tool_call_id: fc.id, status, message });
+                });
+                console.log(`[WS] [SYNC-LONG] Tool result (${fc.name}):`, JSON.stringify(result));
+                const response = { id: fc.id, name: fc.name, response: result };
+                geminiSession.sendToolResponse([response]);
+                send({ type: 'tool_results', results: [response], mode: 'sync' });
+              } catch (err) {
+                console.error(`[WS] [SYNC-LONG] Tool error (${fc.name}):`, err.message);
+                const errResponse = { id: fc.id, name: fc.name, response: { success: false, error: err.message } };
+                geminiSession.sendToolResponse([errResponse]);
+                send({ type: 'tool_results', results: [errResponse], mode: 'sync' });
+              }
+            }
           }
 
           // ── Handle ASYNC tools: fire concurrently, responses with scheduling=INTERRUPT ──
@@ -157,7 +189,18 @@ export function handleWebSocket(ws, apiKey) {
             Promise.all(
               asyncCalls.map(async (fc) => {
                 console.log(`[WS] [ASYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-                const result = executeTool(fc.name, fc.args || {});
+                
+                let result;
+                if (isLongRunningTool(fc.name)) {
+                  // Long-running async tool (e.g., canvas)
+                  send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'generating', message: 'Creating app...' });
+                  result = await executeCanvasTool(fc.args || {}, (status, message) => {
+                    send({ type: 'canvas_progress', tool_call_id: fc.id, status, message });
+                  });
+                } else {
+                  result = executeTool(fc.name, fc.args || {});
+                }
+                
                 console.log(`[WS] [ASYNC] Tool result (${fc.name}):`, JSON.stringify(result));
                 return {
                   id: fc.id,
@@ -420,12 +463,20 @@ export function handleWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat to keep connection alive
+  // Heartbeat — rely on client-side ping (OkHttp pingInterval=25s).
+  // Do NOT send server-side ws.ping() — dual pings cause "Control frames must be final"
+  // errors when pings collide with fragmented message frames on the wire.
+  // Instead, just detect stale connections by listening for pong from client pings.
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   heartbeatInterval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      ws.ping();
+    if (!ws.isAlive) {
+      console.log('[WS] Client heartbeat timeout — terminating');
+      return ws.terminate();
     }
-  }, 30000);
+    ws.isAlive = false;
+    // Don't send ws.ping() — let the client's OkHttp pingInterval handle keepalive
+  }, 60000);
 
   // Cleanup on disconnect
   ws.on('close', async () => {

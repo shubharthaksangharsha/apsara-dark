@@ -72,20 +72,24 @@ fun PluginsScreen(
                     plugin = plugin,
                     isEnabled = when (plugin.id) {
                         "get_server_info" -> liveSettings.toolServerInfo
+                        "apsara_canvas" -> liveSettings.toolCanvas
                         else -> false
                     },
                     isAsync = when (plugin.id) {
                         "get_server_info" -> liveSettings.toolServerInfoAsync
+                        "apsara_canvas" -> liveSettings.toolCanvasAsync
                         else -> false
                     },
                     onToggle = { enabled ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfo(enabled)
+                            "apsara_canvas" -> liveSettings.updateToolCanvas(enabled)
                         }
                     },
                     onAsyncToggle = { async ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfoAsync(async)
+                            "apsara_canvas" -> liveSettings.updateToolCanvasAsync(async)
                         }
                     },
                     palette = palette
@@ -127,13 +131,22 @@ private fun PluginCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = plugin.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.textPrimary,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = plugin.title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.textPrimary
+                    )
+                    if (plugin.description.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = plugin.description,
+                            fontSize = 12.sp,
+                            color = palette.textTertiary
+                        )
+                    }
+                }
 
                 Switch(
                     checked = isEnabled,

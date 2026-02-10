@@ -15,7 +15,20 @@ data class MainFeature(
 
 data class PluginInfo(
     val id: String,
-    val title: String
+    val title: String,
+    val description: String = ""
+)
+
+/**
+ * Represents a canvas app created by Apsara Canvas.
+ */
+data class CanvasApp(
+    val id: String,
+    val title: String,
+    val description: String = "",
+    val status: String = "generating", // generating | testing | fixing | ready | error
+    val createdAt: String = "",
+    val renderUrl: String = ""
 )
 
 object MockData {
@@ -37,7 +50,13 @@ object MockData {
     val availablePlugins = listOf(
         PluginInfo(
             id = "get_server_info",
-            title = "Server Info"
+            title = "Server Info",
+            description = "Returns server time, uptime, and system info"
+        ),
+        PluginInfo(
+            id = "apsara_canvas",
+            title = "Apsara Canvas",
+            description = "Creates web apps with HTML, CSS, JS & React"
         ),
     )
 }
