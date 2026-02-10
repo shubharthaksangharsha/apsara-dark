@@ -133,5 +133,10 @@ object MockData {
             title = "Apsara Interpreter",
             description = "Execute Python code, create visualizations, and analyze data"
         ),
+        PluginInfo(
+            id = "url_context",
+            title = "URL Context",
+            description = "Fetch and analyze content from web pages, articles, PDFs, and documentation URLs"
+        ),
     )
 }

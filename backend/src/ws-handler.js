@@ -41,7 +41,7 @@
 
 import { GeminiLiveSession } from './gemini-live-session.js';
 import { AVAILABLE_VOICES, AVAILABLE_MODELS, DEFAULT_SESSION_CONFIG, AUDIO } from './config.js';
-import { executeTool, executeCanvasTool, executeCanvasEditTool, executeInterpreterTool, executeCodeEditTool, isLongRunningTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
+import { executeTool, executeCanvasTool, executeCanvasEditTool, executeInterpreterTool, executeCodeEditTool, executeUrlContextTool, isLongRunningTool, TOOL_DECLARATIONS, getToolNames } from './tools.js';
 
 export function handleWebSocket(ws, apiKey) {
   let geminiSession = null;
@@ -161,10 +161,12 @@ export function handleWebSocket(ws, apiKey) {
               console.log(`[WS] [SYNC] ${syncResponses.length} tool response(s) sent`);
             }
 
-            // Execute long-running sync tools (like canvas create/edit, interpreter) asynchronously but still respond as sync
+            // Execute long-running sync tools (like canvas create/edit, interpreter, url_context) asynchronously but still respond as sync
             for (const fc of longRunningSync) {
               console.log(`[WS] [SYNC-LONG] Executing long-running tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-              const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress' : 'canvas_progress';
+              const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress'
+                : fc.name === 'url_context' ? 'url_context_progress'
+                : 'canvas_progress';
               send({ type: progressType, tool_call_id: fc.id, status: 'running', message: `Processing...` });
               
               try {
@@ -185,6 +187,9 @@ export function handleWebSocket(ws, apiKey) {
                   if (result.success && result.images && result.images.length > 0) {
                     send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                   }
+                } else if (fc.name === 'url_context') {
+                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                 } else if (fc.name === 'edit_canvas') {
                   const iConfig = geminiSession?.config?.interactionConfig || {};
                   result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);
@@ -214,8 +219,10 @@ export function handleWebSocket(ws, apiKey) {
                 
                 let result;
                 if (isLongRunningTool(fc.name)) {
-                  // Long-running async tool (e.g., canvas create/edit, interpreter)
-                  const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress' : 'canvas_progress';
+                  // Long-running async tool (e.g., canvas create/edit, interpreter, url_context)
+                  const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress'
+                    : fc.name === 'url_context' ? 'url_context_progress'
+                    : 'canvas_progress';
                   send({ type: progressType, tool_call_id: fc.id, status: 'running', message: 'Processing...' });
                   const progressCb = (status, message) => {
                     send({ type: progressType, tool_call_id: fc.id, status, message });
@@ -232,6 +239,9 @@ export function handleWebSocket(ws, apiKey) {
                     if (result.success && result.images && result.images.length > 0) {
                       send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                     }
+                  } else if (fc.name === 'url_context') {
+                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                   } else if (fc.name === 'edit_canvas') {
                     const iConfig = geminiSession?.config?.interactionConfig || {};
                     result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);

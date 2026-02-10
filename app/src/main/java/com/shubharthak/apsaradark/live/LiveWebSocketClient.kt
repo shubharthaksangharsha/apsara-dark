@@ -107,6 +107,15 @@ class LiveWebSocketClient {
     private val _interpreterProgress = MutableSharedFlow<InterpreterProgressEvent>(extraBufferCapacity = 16)
     val interpreterProgress = _interpreterProgress.asSharedFlow()
 
+    // URL Context — progress events for url_context tool
+    data class UrlContextProgressEvent(
+        val toolCallId: String,
+        val status: String,   // "running" | "fetching" | "processing" | "completed" | "error"
+        val message: String
+    )
+    private val _urlContextProgress = MutableSharedFlow<UrlContextProgressEvent>(extraBufferCapacity = 16)
+    val urlContextProgress = _urlContextProgress.asSharedFlow()
+
     // Interpreter — image data from code execution
     data class InterpreterImagesEvent(
         val sessionId: String,
@@ -278,6 +287,13 @@ class LiveWebSocketClient {
                     val message = json.get("message")?.asString ?: ""
                     Log.d(TAG, "Interpreter progress: status=$status, message=$message")
                     _interpreterProgress.tryEmit(InterpreterProgressEvent(toolCallId, status, message))
+                }
+                "url_context_progress" -> {
+                    val toolCallId = json.get("tool_call_id")?.asString ?: ""
+                    val status = json.get("status")?.asString ?: "unknown"
+                    val message = json.get("message")?.asString ?: ""
+                    Log.d(TAG, "URL context progress: status=$status, message=$message")
+                    _urlContextProgress.tryEmit(UrlContextProgressEvent(toolCallId, status, message))
                 }
                 "interpreter_images" -> {
                     val sessionId = json.get("sessionId")?.asString ?: ""

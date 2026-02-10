@@ -376,6 +376,26 @@ class LiveSessionViewModel(
                             }
                         }
                     } catch (_: Exception) { /* ignore parse errors */ }
+                } else if (result.name == "url_context") {
+                    // Extract the text content and URL metadata from url_context result
+                    try {
+                        val json = org.json.JSONObject(result.result)
+                        val resp = if (json.has("response")) json.getJSONObject("response") else json
+                        val text = resp.optString("text", "").ifEmpty { null }
+                        val urlsFetched = resp.optInt("urls_fetched", 0)
+                        val urlMeta = resp.optJSONArray("url_metadata")
+                        val metaLines = StringBuilder()
+                        if (urlMeta != null && urlMeta.length() > 0) {
+                            metaLines.append("URLs fetched ($urlsFetched):\n")
+                            for (i in 0 until urlMeta.length()) {
+                                val m = urlMeta.getJSONObject(i)
+                                val url = m.optString("url", "")
+                                val status = m.optString("status", "")
+                                metaLines.append("  • $url — $status\n")
+                            }
+                        }
+                        extractedOutput = (metaLines.toString() + "\n" + (text ?: "")).trim().ifEmpty { null }
+                    } catch (_: Exception) { /* ignore parse errors */ }
                 }
 
                 // Update in pending buffer
@@ -414,11 +434,11 @@ class LiveSessionViewModel(
                 val updatedCalls = messages[lastApsaraIdx].toolCalls.map { tc ->
                     val matchingResult = results.find { it.id == tc.id }
                     if (matchingResult != null) {
-                        // Extract code/output for run_code
+                        // Extract code/output for run_code or url_context
                         var code: String? = null
                         var output: String? = null
                         var imgs: List<CodeImageInfo> = emptyList()
-                        if (matchingResult.name == "run_code") {
+                        if (matchingResult.name == "run_code" || matchingResult.name == "edit_code") {
                             try {
                                 val json = org.json.JSONObject(matchingResult.result)
                                 val resp = if (json.has("response")) json.getJSONObject("response") else json
@@ -435,6 +455,25 @@ class LiveSessionViewModel(
                                         )
                                     }
                                 }
+                            } catch (_: Exception) { }
+                        } else if (matchingResult.name == "url_context") {
+                            try {
+                                val json = org.json.JSONObject(matchingResult.result)
+                                val resp = if (json.has("response")) json.getJSONObject("response") else json
+                                val text = resp.optString("text", "").ifEmpty { null }
+                                val urlsFetched = resp.optInt("urls_fetched", 0)
+                                val urlMeta = resp.optJSONArray("url_metadata")
+                                val metaLines = StringBuilder()
+                                if (urlMeta != null && urlMeta.length() > 0) {
+                                    metaLines.append("URLs fetched ($urlsFetched):\n")
+                                    for (i in 0 until urlMeta.length()) {
+                                        val m = urlMeta.getJSONObject(i)
+                                        val url = m.optString("url", "")
+                                        val status = m.optString("status", "")
+                                        metaLines.append("  • $url — $status\n")
+                                    }
+                                }
+                                output = (metaLines.toString() + "\n" + (text ?: "")).trim().ifEmpty { null }
                             } catch (_: Exception) { }
                         }
                         tc.copy(
@@ -519,6 +558,29 @@ class LiveSessionViewModel(
                 "error" -> {
                     _canvasNotification.tryEmit(CanvasNotification(event.message, "error"))
                 }
+            }
+        }.launchIn(viewModelScope)
+
+        // URL Context progress — update the matching tool call with live progress messages
+        wsClient.urlContextProgress.onEach { event ->
+            Log.d(TAG, "URL context progress: status=${event.status}, message=${event.message}")
+            // Find the url_context tool call and update its progress in codeOutput
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.name == "url_context" && tc.id == event.toolCallId }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.name == "url_context" && tc.id == event.toolCallId && tc.status == LiveMessage.ToolStatus.RUNNING) {
+                        tc.copy(codeOutput = event.message)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            // Also update in pending buffer
+            val pendingIdx = pendingToolCalls.indexOfFirst { it.name == "url_context" && it.id == event.toolCallId }
+            if (pendingIdx >= 0 && pendingToolCalls[pendingIdx].status == LiveMessage.ToolStatus.RUNNING) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(codeOutput = event.message)
             }
         }.launchIn(viewModelScope)
 

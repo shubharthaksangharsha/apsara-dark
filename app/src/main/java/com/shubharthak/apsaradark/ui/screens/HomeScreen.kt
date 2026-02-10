@@ -1,4 +1,4 @@
-package com.shubharthak.apsaradark.ui.screens
+                                                                                                                                                                                                                package com.shubharthak.apsaradark.ui.screens
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -823,6 +823,11 @@ private fun ApsaraBubble(
                             toolCall = tc,
                             palette = palette
                         )
+                    } else if (tc.name == "url_context") {
+                        UrlContextCard(
+                            toolCall = tc,
+                            palette = palette
+                        )
                     } else {
                         ToolCallCard(
                             toolName = tc.name,
@@ -1138,6 +1143,154 @@ private fun CodeExecutionCard(
 
                 // ── Fallback: Result JSON ──
                 if (!hasCode && !hasOutput && !toolCall.result.isNullOrBlank()) {
+                    val formattedResult = try {
+                        toolCall.result
+                            ?.replace(",\"", ",\n  \"")
+                            ?.replace("{\"", "{\n  \"")
+                            ?.replace("}", "\n}")
+                            ?.replace("\\\"", "\"")
+                            ?: ""
+                    } catch (_: Exception) { toolCall.result ?: "" }
+
+                    Text(
+                        text = formattedResult,
+                        fontSize = 11.sp,
+                        color = palette.textTertiary,
+                        lineHeight = 16.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.textTertiary.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── URL Context card — shown inline for url_context tool calls ─────────────
+
+@Composable
+private fun UrlContextCard(
+    toolCall: EmbeddedToolCall,
+    palette: ApsaraColorPalette
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
+    val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
+    val hasOutput = !toolCall.codeOutput.isNullOrBlank()
+    val hasResult = !toolCall.result.isNullOrBlank()
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // Header row
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.surfaceContainer)
+                .border(
+                    width = 0.5.dp,
+                    color = if (isCompleted) palette.accent.copy(alpha = 0.3f)
+                            else palette.textTertiary.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable(enabled = isCompleted && (hasOutput || hasResult)) {
+                    expanded = !expanded
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Status icon
+            if (isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = palette.accent,
+                    strokeWidth = 2.dp
+                )
+            } else if (isCompleted) {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = "Completed",
+                    tint = palette.accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // Title + subtitle
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "URL Context",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary
+                )
+                Text(
+                    text = if (isRunning) {
+                        // Show live progress message while running
+                        val progress = toolCall.codeOutput
+                        if (!progress.isNullOrBlank()) progress
+                        else if (toolCall.mode == "async") "Fetching URLs (async)…" else "Fetching URLs…"
+                    } else {
+                        if (toolCall.mode == "async") "Completed · async" else "Completed · sync"
+                    },
+                    fontSize = 11.sp,
+                    color = palette.textTertiary
+                )
+            }
+
+            // Expand hint
+            if (isCompleted && (hasOutput || hasResult)) {
+                Text(
+                    text = if (expanded) "▾" else "▸",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary
+                )
+            }
+        }
+
+        // Expandable content
+        AnimatedVisibility(
+            visible = expanded && isCompleted,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Output — URL metadata + extracted text
+                if (hasOutput) {
+                    Text(
+                        text = "Content",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.accent,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    Text(
+                        text = toolCall.codeOutput ?: "",
+                        fontSize = 11.sp,
+                        color = palette.textSecondary,
+                        lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
+
+                // Fallback: raw result JSON
+                if (!hasOutput && hasResult) {
                     val formattedResult = try {
                         toolCall.result
                             ?.replace(",\"", ",\n  \"")

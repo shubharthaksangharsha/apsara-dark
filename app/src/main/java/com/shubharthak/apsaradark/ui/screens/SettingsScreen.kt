@@ -1,6 +1,7 @@
 package com.shubharthak.apsaradark.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,11 +24,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.data.LiveSettingsManager
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.ui.theme.*
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +45,7 @@ fun SettingsScreen(
     var themesExpanded by remember { mutableStateOf(false) }
     var liveExpanded by remember { mutableStateOf(false) }
     var interactionExpanded by remember { mutableStateOf(false) }
+    var highlightOutputTranscription by remember { mutableStateOf(false) }
 
     val generalArrowRotation by animateFloatAsState(
         targetValue = if (generalExpanded) 180f else 0f,
@@ -120,13 +124,47 @@ fun SettingsScreen(
                         modifier = Modifier.padding(horizontal = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        SettingsToggle(
-                            label = "Haptic Feedback",
-                            description = "Make sure you turn on Output Transcriptions",
-                            checked = liveSettings.hapticFeedback,
-                            onCheckedChange = { liveSettings.updateHapticFeedback(it) },
-                            palette = palette
-                        )
+                        // Haptic Feedback — with clickable description that opens Live settings
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(palette.surfaceContainer)
+                                .clickable { liveSettings.updateHapticFeedback(!liveSettings.hapticFeedback) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Haptic Feedback",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = palette.textPrimary
+                                )
+                                Text(
+                                    text = "Enable Output Transcription ↗",
+                                    fontSize = 12.sp,
+                                    color = palette.accent,
+                                    textDecoration = TextDecoration.Underline,
+                                    modifier = Modifier.clickable {
+                                        // Auto-expand Live Settings section and highlight Output Transcription
+                                        liveExpanded = true
+                                        highlightOutputTranscription = true
+                                    }
+                                )
+                            }
+                            Switch(
+                                checked = liveSettings.hapticFeedback,
+                                onCheckedChange = { liveSettings.updateHapticFeedback(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = palette.surface,
+                                    checkedTrackColor = palette.accent,
+                                    uncheckedThumbColor = palette.textTertiary,
+                                    uncheckedTrackColor = palette.surfaceContainer,
+                                    uncheckedBorderColor = palette.textTertiary.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
@@ -202,7 +240,7 @@ fun SettingsScreen(
                     enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
                     exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(150))
                 ) {
-                    LiveSettingsPanel(liveSettings = liveSettings, palette = palette)
+                    LiveSettingsPanel(liveSettings = liveSettings, palette = palette, highlightOutputTranscription = highlightOutputTranscription, onHighlightConsumed = { highlightOutputTranscription = false })
                 }
             }
 
@@ -276,7 +314,9 @@ private fun SectionHeader(
 @Composable
 private fun LiveSettingsPanel(
     liveSettings: LiveSettingsManager,
-    palette: ApsaraColorPalette
+    palette: ApsaraColorPalette,
+    highlightOutputTranscription: Boolean = false,
+    onHighlightConsumed: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.padding(horizontal = 4.dp),
@@ -391,13 +431,64 @@ private fun LiveSettingsPanel(
             palette = palette
         )
 
-        SettingsToggle(
-            label = "Output Transcription",
-            description = "Transcribe Apsara's speech",
-            checked = liveSettings.outputTranscription,
-            onCheckedChange = { liveSettings.updateOutputTranscription(it) },
-            palette = palette
+        // Output Transcription — with highlight animation when navigated from General Settings
+        val highlightBorderWidth by animateDpAsState(
+            targetValue = if (highlightOutputTranscription) 1.5.dp else 0.dp,
+            animationSpec = tween(400),
+            label = "highlightBorder"
         )
+
+        LaunchedEffect(highlightOutputTranscription) {
+            if (highlightOutputTranscription) {
+                delay(2000)
+                onHighlightConsumed()
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .then(
+                    if (highlightOutputTranscription) Modifier.border(
+                        width = highlightBorderWidth,
+                        color = palette.accent,
+                        shape = RoundedCornerShape(12.dp)
+                    ) else Modifier
+                )
+                .background(
+                    if (highlightOutputTranscription) palette.accentSubtle
+                    else palette.surfaceContainer
+                )
+                .clickable { liveSettings.updateOutputTranscription(!liveSettings.outputTranscription) }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Output Transcription",
+                    fontSize = 14.sp,
+                    fontWeight = if (highlightOutputTranscription) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (highlightOutputTranscription) palette.accent else palette.textPrimary
+                )
+                Text(
+                    text = "Transcribe Apsara's speech",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary
+                )
+            }
+            Switch(
+                checked = liveSettings.outputTranscription,
+                onCheckedChange = { liveSettings.updateOutputTranscription(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = palette.accent,
+                    checkedTrackColor = palette.accentSubtle,
+                    uncheckedThumbColor = palette.textTertiary,
+                    uncheckedTrackColor = palette.surfaceContainerHighest,
+                    uncheckedBorderColor = palette.surfaceContainerHighest
+                )
+            )
+        }
 
         SettingsToggle(
             label = "Context Compression",

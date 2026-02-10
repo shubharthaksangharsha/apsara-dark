@@ -9,14 +9,17 @@ import { CanvasService } from './canvas/canvas-service.js';
 import { canvasStore } from './canvas/canvas-store.js';
 import { InterpreterService } from './interpreter/interpreter-service.js';
 import { interpreterStore } from './interpreter/interpreter-store.js';
+import { GoogleGenAI } from '@google/genai';
 
 // Canvas service instance — initialized lazily when API key is available
 let canvasService = null;
 let interpreterService = null;
+let geminiApiKey = null;
 
 export function initCanvasService(apiKey) {
   canvasService = new CanvasService(apiKey);
   interpreterService = new InterpreterService(apiKey);
+  geminiApiKey = apiKey;
 }
 
 // ─── Tool Declarations (sent to Gemini so it knows what it can call) ────────
@@ -147,6 +150,24 @@ export const TOOL_DECLARATIONS = [
         },
       },
       required: ['session_id', 'instructions'],
+    },
+  },
+  {
+    name: 'url_context',
+    description: 'Fetches and analyzes content from one or more URLs using the Gemini URL Context tool. Use this when the user asks you to read, summarize, analyze, compare, or extract information from web pages, articles, documentation, or any publicly accessible URL. Supports HTML pages, PDFs, images, JSON, and plain text. Can process up to 20 URLs per request.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The question or instruction about the URL content. Include the URL(s) in this prompt, e.g. "Summarize https://example.com" or "Compare these two articles: https://url1.com and https://url2.com".',
+        },
+        title: {
+          type: 'string',
+          description: 'A short title describing this URL context request (e.g., "Wikipedia Summary", "Recipe Comparison"). Auto-generated if not provided.',
+        },
+      },
+      required: ['prompt'],
     },
   },
 ];
@@ -365,7 +386,7 @@ export async function executeCanvasEditTool(args = {}, onProgress, interactionCo
  * Check if a tool requires async execution (takes significant time).
  */
 export function isLongRunningTool(name) {
-  return name === 'apsara_canvas' || name === 'edit_canvas' || name === 'run_code' || name === 'edit_code';
+  return name === 'apsara_canvas' || name === 'edit_canvas' || name === 'run_code' || name === 'edit_code' || name === 'url_context';
 }
 
 /**
@@ -495,6 +516,109 @@ export async function executeCodeEditTool(args = {}, onProgress, interactionConf
     };
   } catch (error) {
     console.error('[Code Edit Tool] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Execute the url_context tool using the Interactions API.
+ * Fetches and analyzes content from URLs.
+ * 
+ * @param {Object} args - { prompt, title }
+ * @param {Function} onProgress - Callback for progress updates sent to client
+ * @param {Object} interactionConfig - Config overrides (model, temperature, etc.) from session
+ * @returns {Promise<Object>} Result to send back to Gemini
+ */
+export async function executeUrlContextTool(args = {}, onProgress, interactionConfig = {}) {
+  if (!geminiApiKey) {
+    return { success: false, error: 'Gemini API key not available' };
+  }
+
+  const { prompt, title } = args;
+  if (!prompt) {
+    return { success: false, error: 'prompt is required' };
+  }
+
+  const autoTitle = title || prompt.substring(0, 60).replace(/\n/g, ' ').trim() + '...';
+
+  onProgress?.('running', `Fetching URL content for "${autoTitle}"...`);
+
+  try {
+    const client = new GoogleGenAI({ apiKey: geminiApiKey });
+
+    // Merge interaction config with defaults
+    const model = interactionConfig.model || 'gemini-2.5-flash';
+    const temperature = interactionConfig.temperature !== undefined ? interactionConfig.temperature : 0.7;
+    const maxOutputTokens = interactionConfig.max_output_tokens || 65536;
+    const thinkingLevel = interactionConfig.thinking_level || 'high';
+    const thinkingSummaries = interactionConfig.thinking_summaries || 'auto';
+
+    onProgress?.('fetching', `Using ${model} with URL context tool...`);
+
+    // Build the Interactions API request with url_context built-in tool
+    const request = {
+      model,
+      input: prompt,
+      tools: [{ type: 'url_context' }],
+      system_instruction: `You are Apsara, a helpful AI assistant. When analyzing URL content, provide clear, detailed, and well-structured responses. Use markdown formatting for readability. Extract key information, summarize accurately, and cite sources when relevant.`,
+      generation_config: {
+        temperature,
+        max_output_tokens: maxOutputTokens,
+        thinking_level: thinkingLevel,
+        thinking_summaries: thinkingSummaries,
+      },
+    };
+
+    onProgress?.('processing', `Fetching and analyzing URL content...`);
+
+    const interaction = await client.interactions.create(request);
+
+    // Extract results
+    let resultText = '';
+    let urlMetadata = [];
+    let thoughts = [];
+
+    if (interaction.outputs) {
+      for (const output of interaction.outputs) {
+        if (output.type === 'text') {
+          resultText += output.text;
+        } else if (output.type === 'thought') {
+          if (output.summary) {
+            thoughts.push(output.summary);
+          }
+        }
+      }
+    }
+
+    // Extract URL context metadata if available
+    // The metadata is typically in the candidates/outputs
+    if (interaction.candidates && interaction.candidates[0]) {
+      const candidate = interaction.candidates[0];
+      if (candidate.urlContextMetadata?.urlMetadata) {
+        urlMetadata = candidate.urlContextMetadata.urlMetadata.map(m => ({
+          url: m.retrievedUrl || m.retrieved_url,
+          status: m.urlRetrievalStatus || m.url_retrieval_status,
+        }));
+      }
+    }
+
+    onProgress?.('completed', `URL context analysis complete`);
+
+    return {
+      success: true,
+      title: autoTitle,
+      text: resultText,
+      url_metadata: urlMetadata,
+      urls_fetched: urlMetadata.length,
+      thoughts: thoughts.length > 0 ? thoughts : undefined,
+      usage: interaction.usage || null,
+      message: resultText
+        ? `Successfully analyzed URL content. ${urlMetadata.length > 0 ? `Fetched ${urlMetadata.length} URL(s).` : ''}`
+        : 'No content could be extracted from the URL(s).',
+    };
+  } catch (error) {
+    console.error('[URL Context Tool] Error:', error.message);
+    onProgress?.('error', `URL context failed: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

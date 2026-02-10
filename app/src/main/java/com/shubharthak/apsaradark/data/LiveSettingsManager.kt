@@ -83,6 +83,13 @@ class LiveSettingsManager(context: Context) {
     var toolInterpreterAsync by mutableStateOf(prefs.getBoolean("tool_interpreter_async", true))
         private set
 
+    // URL Context plugin
+    var toolUrlContext by mutableStateOf(prefs.getBoolean("tool_url_context", true))
+        private set
+
+    var toolUrlContextAsync by mutableStateOf(prefs.getBoolean("tool_url_context_async", true))
+        private set
+
     // ─── Interaction Settings (shared by Canvas, Interpreter, and future tools) ─────
     var interactionModel by mutableStateOf(prefs.getString("interaction_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
         private set
@@ -128,6 +135,8 @@ class LiveSettingsManager(context: Context) {
     fun updateToolCanvasAsync(v: Boolean) { toolCanvasAsync = v; prefs.edit().putBoolean("tool_canvas_async", v).apply() }
     fun updateToolInterpreter(v: Boolean) { toolInterpreter = v; prefs.edit().putBoolean("tool_interpreter", v).apply() }
     fun updateToolInterpreterAsync(v: Boolean) { toolInterpreterAsync = v; prefs.edit().putBoolean("tool_interpreter_async", v).apply() }
+    fun updateToolUrlContext(v: Boolean) { toolUrlContext = v; prefs.edit().putBoolean("tool_url_context", v).apply() }
+    fun updateToolUrlContextAsync(v: Boolean) { toolUrlContextAsync = v; prefs.edit().putBoolean("tool_url_context_async", v).apply() }
     fun updateInteractionModel(v: String) { interactionModel = v; prefs.edit().putString("interaction_model", v).apply() }
     fun updateInteractionMaxOutputTokens(v: Int) { interactionMaxOutputTokens = v; prefs.edit().putInt("interaction_max_output_tokens", v).apply() }
     fun updateInteractionThinkingLevel(v: String) { interactionThinkingLevel = v; prefs.edit().putString("interaction_thinking_level", v).apply() }
@@ -185,6 +194,10 @@ class LiveSettingsManager(context: Context) {
             toolAsyncModes["run_code"] = toolInterpreterAsync
             toolAsyncModes["edit_code"] = toolInterpreterAsync
         }
+        if (toolUrlContext) {
+            enabledTools.add("url_context")
+            toolAsyncModes["url_context"] = toolUrlContextAsync
+        }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools
             config["toolAsyncModes"] = toolAsyncModes
@@ -203,7 +216,7 @@ class LiveSettingsManager(context: Context) {
     }
 
     /** Check if any plugin tool is enabled */
-    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCanvas || toolInterpreter
+    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCanvas || toolInterpreter || toolUrlContext
 
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
