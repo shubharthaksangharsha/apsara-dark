@@ -56,10 +56,46 @@ data class CanvasLogEntry(
     val attempts: Int = 0
 )
 
+/**
+ * Represents a code execution session from the Apsara Interpreter.
+ */
+data class CodeSession(
+    val id: String,
+    val title: String,
+    val prompt: String = "",
+    val status: String = "running", // running | completed | error
+    val hasImages: Boolean = false,
+    val imageCount: Int = 0,
+    val createdAt: String = ""
+)
+
+/**
+ * Full detail of a code session including code, output, and images.
+ */
+data class CodeSessionDetail(
+    val id: String,
+    val title: String,
+    val prompt: String = "",
+    val code: String = "",
+    val output: String = "",
+    val images: List<CodeSessionImage> = emptyList(),
+    val status: String = "",
+    val error: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = ""
+)
+
+data class CodeSessionImage(
+    val index: Int,
+    val mimeType: String = "image/png",
+    val url: String = ""
+)
+
 object MockData {
 
     val drawerItems = listOf(
         DrawerItem("My Canvas", Icons.Outlined.Dashboard),
+        DrawerItem("My Code", Icons.Outlined.Code),
         DrawerItem("My Plugins", Icons.Outlined.Extension),
         DrawerItem("Laptop Control", Icons.Outlined.Computer),
         DrawerItem("Settings", Icons.Outlined.Settings),
@@ -82,6 +118,11 @@ object MockData {
             id = "apsara_canvas",
             title = "Apsara Canvas",
             description = "Create, list, view, and edit web apps with HTML, CSS, JS & React"
+        ),
+        PluginInfo(
+            id = "apsara_interpreter",
+            title = "Apsara Interpreter",
+            description = "Execute Python code, create visualizations, and analyze data"
         ),
     )
 }

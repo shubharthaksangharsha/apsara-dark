@@ -10,9 +10,12 @@
 
 import { canvasStore } from '../canvas/canvas-store.js';
 import { CanvasService, CANVAS_DEFAULTS } from '../canvas/canvas-service.js';
+import { InterpreterService } from '../interpreter/interpreter-service.js';
+import { interpreterStore } from '../interpreter/interpreter-store.js';
 
 // Canvas service instance — initialized lazily
 let canvasService = null;
+let interpreterService = null;
 
 function getCanvasService() {
   if (!canvasService) {
@@ -22,6 +25,16 @@ function getCanvasService() {
     }
   }
   return canvasService;
+}
+
+function getInterpreterService() {
+  if (!interpreterService) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      interpreterService = new InterpreterService(apiKey);
+    }
+  }
+  return interpreterService;
 }
 
 // ─── Function Tool Declarations ─────────────────────────────────────────────
@@ -94,6 +107,50 @@ export const FUNCTION_TOOLS = [
         },
       },
       required: ['canvas_id', 'instructions'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'run_code',
+    description: 'Executes Python code using the Apsara Interpreter. Use this when the user asks to run Python code, compute, calculate, analyze data, or create visualizations.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'A description of what code to write and execute.',
+        },
+        title: {
+          type: 'string',
+          description: 'A short title for this code session.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'list_code_sessions',
+    description: 'Lists all code execution sessions from the Apsara Interpreter. Returns their IDs, titles, status, and whether they have image outputs.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    type: 'function',
+    name: 'get_code_session',
+    description: 'Gets the full detail of a code execution session by ID, including the Python code, output, and any generated images.',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'The ID of the code session to retrieve.',
+        },
+      },
+      required: ['session_id'],
     },
   },
 ];
@@ -193,6 +250,66 @@ export async function executeFunction(name, args = {}) {
       } catch (err) {
         return JSON.stringify({ success: false, error: err.message });
       }
+    }
+
+    case 'run_code': {
+      const codePrompt = args.prompt;
+      const codeTitle = args.title;
+      if (!codePrompt) {
+        return JSON.stringify({ success: false, error: 'prompt is required' });
+      }
+      const interpService = getInterpreterService();
+      if (!interpService) {
+        return JSON.stringify({ success: false, error: 'Interpreter service not available' });
+      }
+      try {
+        const session = await interpService.runCode({ prompt: codePrompt, title: codeTitle });
+        return JSON.stringify({
+          success: true,
+          session_id: session.id,
+          title: session.title,
+          status: session.status,
+          code: session.code,
+          output: session.output,
+          image_count: session.images ? session.images.length : 0,
+          message: session.status === 'completed'
+            ? `Code executed successfully!`
+            : `Code execution had issues: ${session.error}`,
+        });
+      } catch (err) {
+        return JSON.stringify({ success: false, error: err.message });
+      }
+    }
+
+    case 'list_code_sessions': {
+      const summaries = interpreterStore.getSummaries();
+      return JSON.stringify({
+        success: true,
+        count: summaries.length,
+        sessions: summaries,
+      });
+    }
+
+    case 'get_code_session': {
+      const sessionId = args.session_id;
+      if (!sessionId) {
+        return JSON.stringify({ success: false, error: 'session_id is required' });
+      }
+      const detail = interpreterStore.getDetail(sessionId);
+      if (!detail) {
+        return JSON.stringify({ success: false, error: `Code session not found: ${sessionId}` });
+      }
+      return JSON.stringify({
+        success: true,
+        session: {
+          ...detail,
+          image_count: detail.images ? detail.images.length : 0,
+          images: (detail.images || []).map((img, i) => ({
+            index: i,
+            mime_type: img.mime_type,
+          })),
+        },
+      });
     }
 
     default:

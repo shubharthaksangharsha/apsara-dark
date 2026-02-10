@@ -73,23 +73,27 @@ fun PluginsScreen(
                     isEnabled = when (plugin.id) {
                         "get_server_info" -> liveSettings.toolServerInfo
                         "apsara_canvas" -> liveSettings.toolCanvas
+                        "apsara_interpreter" -> liveSettings.toolInterpreter
                         else -> false
                     },
                     isAsync = when (plugin.id) {
                         "get_server_info" -> liveSettings.toolServerInfoAsync
                         "apsara_canvas" -> liveSettings.toolCanvasAsync
+                        "apsara_interpreter" -> liveSettings.toolInterpreterAsync
                         else -> false
                     },
                     onToggle = { enabled ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfo(enabled)
                             "apsara_canvas" -> liveSettings.updateToolCanvas(enabled)
+                            "apsara_interpreter" -> liveSettings.updateToolInterpreter(enabled)
                         }
                     },
                     onAsyncToggle = { async ->
                         when (plugin.id) {
                             "get_server_info" -> liveSettings.updateToolServerInfoAsync(async)
                             "apsara_canvas" -> liveSettings.updateToolCanvasAsync(async)
+                            "apsara_interpreter" -> liveSettings.updateToolInterpreterAsync(async)
                         }
                     },
                     palette = palette

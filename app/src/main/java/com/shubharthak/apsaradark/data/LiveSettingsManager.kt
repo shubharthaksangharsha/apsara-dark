@@ -76,6 +76,29 @@ class LiveSettingsManager(context: Context) {
     var toolCanvasAsync by mutableStateOf(prefs.getBoolean("tool_canvas_async", true))
         private set
 
+    // Apsara Interpreter plugin
+    var toolInterpreter by mutableStateOf(prefs.getBoolean("tool_interpreter", true))
+        private set
+
+    var toolInterpreterAsync by mutableStateOf(prefs.getBoolean("tool_interpreter_async", true))
+        private set
+
+    // ─── Interaction Settings (shared by Canvas, Interpreter, and future tools) ─────
+    var interactionModel by mutableStateOf(prefs.getString("interaction_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
+        private set
+
+    var interactionMaxOutputTokens by mutableStateOf(prefs.getInt("interaction_max_output_tokens", 65536))
+        private set
+
+    var interactionThinkingLevel by mutableStateOf(prefs.getString("interaction_thinking_level", "high") ?: "high")
+        private set
+
+    var interactionThinkingSummaries by mutableStateOf(prefs.getString("interaction_thinking_summaries", "auto") ?: "auto")
+        private set
+
+    var interactionTemperature by mutableFloatStateOf(prefs.getFloat("interaction_temperature", 0.7f))
+        private set
+
     // Media resolution for video/image input (LOW, MEDIUM, HIGH)
     var mediaResolution by mutableStateOf(prefs.getString("media_resolution", "MEDIUM") ?: "MEDIUM")
         private set
@@ -103,6 +126,13 @@ class LiveSettingsManager(context: Context) {
     fun updateToolServerInfoAsync(v: Boolean) { toolServerInfoAsync = v; prefs.edit().putBoolean("tool_server_info_async", v).apply() }
     fun updateToolCanvas(v: Boolean) { toolCanvas = v; prefs.edit().putBoolean("tool_canvas", v).apply() }
     fun updateToolCanvasAsync(v: Boolean) { toolCanvasAsync = v; prefs.edit().putBoolean("tool_canvas_async", v).apply() }
+    fun updateToolInterpreter(v: Boolean) { toolInterpreter = v; prefs.edit().putBoolean("tool_interpreter", v).apply() }
+    fun updateToolInterpreterAsync(v: Boolean) { toolInterpreterAsync = v; prefs.edit().putBoolean("tool_interpreter_async", v).apply() }
+    fun updateInteractionModel(v: String) { interactionModel = v; prefs.edit().putString("interaction_model", v).apply() }
+    fun updateInteractionMaxOutputTokens(v: Int) { interactionMaxOutputTokens = v; prefs.edit().putInt("interaction_max_output_tokens", v).apply() }
+    fun updateInteractionThinkingLevel(v: String) { interactionThinkingLevel = v; prefs.edit().putString("interaction_thinking_level", v).apply() }
+    fun updateInteractionThinkingSummaries(v: String) { interactionThinkingSummaries = v; prefs.edit().putString("interaction_thinking_summaries", v).apply() }
+    fun updateInteractionTemperature(v: Float) { interactionTemperature = v; prefs.edit().putFloat("interaction_temperature", v).apply() }
     fun updateMediaResolution(v: String) { mediaResolution = v; prefs.edit().putString("media_resolution", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
@@ -147,16 +177,31 @@ class LiveSettingsManager(context: Context) {
             toolAsyncModes["apsara_canvas"] = toolCanvasAsync
             toolAsyncModes["edit_canvas"] = toolCanvasAsync
         }
+        if (toolInterpreter) {
+            enabledTools.add("run_code")
+            enabledTools.add("list_code_sessions")
+            enabledTools.add("get_code_session")
+            toolAsyncModes["run_code"] = toolInterpreterAsync
+        }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools
             config["toolAsyncModes"] = toolAsyncModes
         }
 
+        // Interaction settings — shared by Canvas, Interpreter, and future tools
+        config["interactionConfig"] = mapOf(
+            "model" to interactionModel,
+            "max_output_tokens" to interactionMaxOutputTokens,
+            "thinking_level" to interactionThinkingLevel,
+            "thinking_summaries" to interactionThinkingSummaries,
+            "temperature" to interactionTemperature.toDouble()
+        )
+
         return config
     }
 
     /** Check if any plugin tool is enabled */
-    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCanvas
+    fun hasAnyToolEnabled(): Boolean = toolServerInfo || toolCanvas || toolInterpreter
 
     companion object {
         val availableVoices = listOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
@@ -164,6 +209,16 @@ class LiveSettingsManager(context: Context) {
             "gemini-2.5-flash-native-audio-preview-12-2025"
         )
         val availableMediaResolutions = listOf("LOW", "MEDIUM", "HIGH")
+        val availableInteractionModels = listOf(
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-pro-preview",
+            "gemini-3-flash-preview"
+        )
+        val availableThinkingLevels = listOf("minimal", "low", "medium", "high")
+        val availableThinkingSummaries = listOf("auto", "none")
+        val availableMaxOutputTokens = listOf(8192, 16384, 32768, 65536)
     }
 }
 

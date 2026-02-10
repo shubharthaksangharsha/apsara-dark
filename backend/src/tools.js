@@ -7,12 +7,16 @@
 
 import { CanvasService } from './canvas/canvas-service.js';
 import { canvasStore } from './canvas/canvas-store.js';
+import { InterpreterService } from './interpreter/interpreter-service.js';
+import { interpreterStore } from './interpreter/interpreter-store.js';
 
 // Canvas service instance — initialized lazily when API key is available
 let canvasService = null;
+let interpreterService = null;
 
 export function initCanvasService(apiKey) {
   canvasService = new CanvasService(apiKey);
+  interpreterService = new InterpreterService(apiKey);
 }
 
 // ─── Tool Declarations (sent to Gemini so it knows what it can call) ────────
@@ -86,6 +90,47 @@ export const TOOL_DECLARATIONS = [
       required: ['canvas_id', 'instructions'],
     },
   },
+  {
+    name: 'run_code',
+    description: 'Executes Python code using the Apsara Interpreter. Use this when the user asks to run, execute, compute, calculate, analyze data, create a chart/plot/visualization, or write Python code. The code is executed in a sandboxed Python environment with access to numpy, pandas, matplotlib, scipy, sympy, and PIL. The results (including any generated images) will be saved in "My Code" for the user to review.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'A description of what code to write and execute. Be specific about the computation, analysis, or visualization needed.',
+        },
+        title: {
+          type: 'string',
+          description: 'A short title for this code session (e.g., "Fibonacci Sequence", "Stock Price Chart"). Auto-generated if not provided.',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    name: 'list_code_sessions',
+    description: 'Lists all code execution sessions from the Apsara Interpreter. Returns their IDs, titles, status, and whether they have image outputs. Use this when the user asks to see their code history, past computations, or executed scripts.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_code_session',
+    description: 'Gets the full detail of a code execution session by ID, including the Python code, output, any generated images, and execution log. Use this when the user wants to see the code, output, or images from a past session.',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'The ID of the code session to retrieve. Get this from list_code_sessions.',
+        },
+      },
+      required: ['session_id'],
+    },
+  },
 ];
 
 // ─── Tool Handlers ──────────────────────────────────────────────────────────
@@ -147,6 +192,51 @@ export function executeTool(name, args = {}) {
         app: {
           ...detail,
           html: truncatedHtml,
+        },
+      };
+    }
+
+    case 'list_code_sessions': {
+      const summaries = interpreterStore.getSummaries();
+      return {
+        success: true,
+        count: summaries.length,
+        sessions: summaries,
+        message: summaries.length === 0
+          ? 'No code sessions have been created yet.'
+          : `Found ${summaries.length} code session(s).`,
+      };
+    }
+
+    case 'get_code_session': {
+      const sessionId = args.session_id;
+      if (!sessionId) {
+        return { success: false, error: 'session_id is required' };
+      }
+      const detail = interpreterStore.getDetail(sessionId);
+      if (!detail) {
+        return { success: false, error: `Code session not found: ${sessionId}` };
+      }
+      // Truncate code/output if very long
+      const truncatedCode = detail.code && detail.code.length > 8000
+        ? detail.code.substring(0, 8000) + `\n\n... [truncated — full code is ${detail.code.length} chars]`
+        : detail.code;
+      const truncatedOutput = detail.output && detail.output.length > 4000
+        ? detail.output.substring(0, 4000) + `\n\n... [truncated — full output is ${detail.output.length} chars]`
+        : detail.output;
+      return {
+        success: true,
+        session: {
+          ...detail,
+          code: truncatedCode,
+          output: truncatedOutput,
+          image_count: detail.images ? detail.images.length : 0,
+          // Don't send full base64 images through Gemini — just URLs
+          images: (detail.images || []).map((img, i) => ({
+            index: i,
+            mime_type: img.mime_type,
+            url: `/api/interpreter/${detail.id}/images/${i}`,
+          })),
         },
       };
     }
@@ -253,7 +343,63 @@ export async function executeCanvasEditTool(args = {}, onProgress) {
  * Check if a tool requires async execution (takes significant time).
  */
 export function isLongRunningTool(name) {
-  return name === 'apsara_canvas' || name === 'edit_canvas';
+  return name === 'apsara_canvas' || name === 'edit_canvas' || name === 'run_code';
+}
+
+/**
+ * Execute the run_code tool asynchronously.
+ * Uses the Interpreter service to run Python code via Interactions API.
+ * 
+ * @param {Object} args - { prompt, title }
+ * @param {Function} onProgress - Callback for progress updates sent to client
+ * @returns {Promise<Object>} Result to send back to Gemini
+ */
+export async function executeInterpreterTool(args = {}, onProgress, interactionConfig = {}) {
+  if (!interpreterService) {
+    return { success: false, error: 'Interpreter service not initialized' };
+  }
+
+  const { prompt, title } = args;
+  if (!prompt) {
+    return { success: false, error: 'prompt is required' };
+  }
+
+  try {
+    const session = await interpreterService.runCode({
+      prompt,
+      title,
+      config: interactionConfig,
+      onProgress: (status, message) => {
+        console.log(`[Interpreter Tool] ${status}: ${message}`);
+        onProgress?.(status, message);
+      },
+    });
+
+    // Build image URLs for client
+    const imageUrls = (session.images || []).map((img, i) => ({
+      index: i,
+      mime_type: img.mime_type,
+      url: `/api/interpreter/${session.id}/images/${i}`,
+    }));
+
+    return {
+      success: true,
+      session_id: session.id,
+      title: session.title,
+      status: session.status,
+      code: session.code || '',
+      output: session.output || '',
+      image_count: imageUrls.length,
+      images: imageUrls,
+      error: session.error || null,
+      message: session.status === 'completed'
+        ? `Code executed successfully! ${imageUrls.length > 0 ? `Generated ${imageUrls.length} image(s).` : ''} Check "My Code" for details.`
+        : `Code execution had an issue: ${session.error}`,
+    };
+  } catch (error) {
+    console.error('[Interpreter Tool] Error:', error.message);
+    return { success: false, error: error.message };
+  }
 }
 
 /**

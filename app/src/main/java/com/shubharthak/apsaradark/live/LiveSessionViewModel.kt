@@ -47,7 +47,20 @@ data class EmbeddedToolCall(
     val id: String,
     val status: LiveMessage.ToolStatus = LiveMessage.ToolStatus.RUNNING,
     val mode: String = "sync",     // "sync" or "async"
-    val result: String? = null
+    val result: String? = null,
+    // Interpreter-specific: code and output shown inline as collapsible sections
+    val codeBlock: String? = null,
+    val codeOutput: String? = null,
+    val codeImages: List<CodeImageInfo> = emptyList()
+)
+
+/**
+ * Image info from an interpreter code execution.
+ */
+data class CodeImageInfo(
+    val index: Int,
+    val mimeType: String = "image/png",
+    val url: String = ""
 )
 
 /**
@@ -341,13 +354,40 @@ class LiveSessionViewModel(
         // Tool results — update the matching embedded tool call to "completed"
         wsClient.toolResults.onEach { results ->
             for (result in results) {
+                // Extract code/output from result JSON for run_code tools
+                var extractedCode: String? = null
+                var extractedOutput: String? = null
+                var extractedImages: List<CodeImageInfo> = emptyList()
+                if (result.name == "run_code") {
+                    try {
+                        val json = org.json.JSONObject(result.result)
+                        val resp = if (json.has("response")) json.getJSONObject("response") else json
+                        extractedCode = resp.optString("code", "").ifEmpty { null }
+                        extractedOutput = resp.optString("output", "").ifEmpty { null }
+                        val imgsArr = resp.optJSONArray("images")
+                        if (imgsArr != null) {
+                            extractedImages = (0 until imgsArr.length()).map { i ->
+                                val img = imgsArr.getJSONObject(i)
+                                CodeImageInfo(
+                                    index = img.optInt("index", i),
+                                    mimeType = img.optString("mime_type", "image/png"),
+                                    url = img.optString("url", "")
+                                )
+                            }
+                        }
+                    } catch (_: Exception) { /* ignore parse errors */ }
+                }
+
                 // Update in pending buffer
                 val pendingIdx = pendingToolCalls.indexOfFirst { it.id == result.id }
                 if (pendingIdx >= 0) {
                     pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
                         status = LiveMessage.ToolStatus.COMPLETED,
                         result = result.result,
-                        mode = result.mode
+                        mode = result.mode,
+                        codeBlock = pendingToolCalls[pendingIdx].codeBlock ?: extractedCode,
+                        codeOutput = pendingToolCalls[pendingIdx].codeOutput ?: extractedOutput,
+                        codeImages = pendingToolCalls[pendingIdx].codeImages.ifEmpty { extractedImages }
                     )
                 } else {
                     // Wasn't in pending — add it
@@ -357,7 +397,10 @@ class LiveSessionViewModel(
                             id = result.id,
                             status = LiveMessage.ToolStatus.COMPLETED,
                             mode = result.mode,
-                            result = result.result
+                            result = result.result,
+                            codeBlock = extractedCode,
+                            codeOutput = extractedOutput,
+                            codeImages = extractedImages
                         )
                     )
                 }
@@ -371,10 +414,36 @@ class LiveSessionViewModel(
                 val updatedCalls = messages[lastApsaraIdx].toolCalls.map { tc ->
                     val matchingResult = results.find { it.id == tc.id }
                     if (matchingResult != null) {
+                        // Extract code/output for run_code
+                        var code: String? = null
+                        var output: String? = null
+                        var imgs: List<CodeImageInfo> = emptyList()
+                        if (matchingResult.name == "run_code") {
+                            try {
+                                val json = org.json.JSONObject(matchingResult.result)
+                                val resp = if (json.has("response")) json.getJSONObject("response") else json
+                                code = resp.optString("code", "").ifEmpty { null }
+                                output = resp.optString("output", "").ifEmpty { null }
+                                val imgsArr = resp.optJSONArray("images")
+                                if (imgsArr != null) {
+                                    imgs = (0 until imgsArr.length()).map { i ->
+                                        val img = imgsArr.getJSONObject(i)
+                                        CodeImageInfo(
+                                            index = img.optInt("index", i),
+                                            mimeType = img.optString("mime_type", "image/png"),
+                                            url = img.optString("url", "")
+                                        )
+                                    }
+                                }
+                            } catch (_: Exception) { }
+                        }
                         tc.copy(
                             status = LiveMessage.ToolStatus.COMPLETED,
                             result = matchingResult.result,
-                            mode = matchingResult.mode
+                            mode = matchingResult.mode,
+                            codeBlock = tc.codeBlock ?: code,
+                            codeOutput = tc.codeOutput ?: output,
+                            codeImages = tc.codeImages.ifEmpty { imgs }
                         )
                     } else tc
                 }
@@ -450,6 +519,78 @@ class LiveSessionViewModel(
                 "error" -> {
                     _canvasNotification.tryEmit(CanvasNotification(event.message, "error"))
                 }
+            }
+        }.launchIn(viewModelScope)
+
+        // ── Interpreter: executable code — attach to current run_code tool call ──
+        wsClient.executableCode.onEach { event ->
+            Log.d(TAG, "Executable code received: ${event.code.take(80)}...")
+            // Find the latest run_code tool call and attach the code
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.name == "run_code" }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.name == "run_code" && tc.codeBlock.isNullOrEmpty()) {
+                        tc.copy(codeBlock = event.code)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            // Also update pending buffer
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            if (pendingIdx >= 0 && pendingToolCalls[pendingIdx].codeBlock.isNullOrEmpty()) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(codeBlock = event.code)
+            }
+        }.launchIn(viewModelScope)
+
+        // ── Interpreter: code execution result — attach output to run_code tool call ──
+        wsClient.codeExecutionResult.onEach { event ->
+            Log.d(TAG, "Code execution result: ${event.output.take(80)}...")
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.name == "run_code" }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.name == "run_code") {
+                        tc.copy(codeOutput = (tc.codeOutput ?: "") + event.output)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            if (pendingIdx >= 0) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
+                    codeOutput = (pendingToolCalls[pendingIdx].codeOutput ?: "") + event.output
+                )
+            }
+        }.launchIn(viewModelScope)
+
+        // ── Interpreter: images — attach image URLs to run_code tool call ──
+        wsClient.interpreterImages.onEach { event ->
+            Log.d(TAG, "Interpreter images: sessionId=${event.sessionId}, count=${event.images.size}")
+            val imageInfos = event.images.map { img ->
+                CodeImageInfo(index = img.index, mimeType = img.mimeType, url = img.url)
+            }
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.name == "run_code" }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.name == "run_code") {
+                        tc.copy(codeImages = tc.codeImages + imageInfos)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            if (pendingIdx >= 0) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
+                    codeImages = pendingToolCalls[pendingIdx].codeImages + imageInfos
+                )
             }
         }.launchIn(viewModelScope)
 

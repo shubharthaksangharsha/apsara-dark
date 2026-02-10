@@ -11,6 +11,7 @@ import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.screens.CanvasScreen
 import com.shubharthak.apsaradark.ui.screens.HomeScreen
+import com.shubharthak.apsaradark.ui.screens.InterpreterScreen
 import com.shubharthak.apsaradark.ui.screens.PluginsScreen
 import com.shubharthak.apsaradark.ui.screens.SettingsScreen
 
@@ -19,6 +20,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PLUGINS = "plugins"
     const val CANVAS = "canvas"
+    const val INTERPRETER = "interpreter"
 }
 
 @Composable
@@ -58,6 +60,9 @@ fun AppNavigation(
                 },
                 onNavigateToCanvas = {
                     navController.navigate(Routes.CANVAS)
+                },
+                onNavigateToInterpreter = {
+                    navController.navigate(Routes.INTERPRETER)
                 }
             )
         }
@@ -88,6 +93,13 @@ fun AppNavigation(
                     // Don't open the drawer when returning from Canvas —
                     // Canvas can be opened via Snackbar during a live session,
                     // so we should go straight back to the live view.
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.INTERPRETER) {
+            InterpreterScreen(
+                onBack = {
                     navController.popBackStack()
                 }
             )

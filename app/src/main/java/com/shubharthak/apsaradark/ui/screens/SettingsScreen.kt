@@ -41,6 +41,7 @@ fun SettingsScreen(
     var generalExpanded by remember { mutableStateOf(false) }
     var themesExpanded by remember { mutableStateOf(false) }
     var liveExpanded by remember { mutableStateOf(false) }
+    var interactionExpanded by remember { mutableStateOf(false) }
 
     val generalArrowRotation by animateFloatAsState(
         targetValue = if (generalExpanded) 180f else 0f,
@@ -56,6 +57,11 @@ fun SettingsScreen(
         targetValue = if (liveExpanded) 180f else 0f,
         animationSpec = tween(250),
         label = "liveArrow"
+    )
+    val interactionArrowRotation by animateFloatAsState(
+        targetValue = if (interactionExpanded) 180f else 0f,
+        animationSpec = tween(250),
+        label = "interactionArrow"
     )
 
     Scaffold(
@@ -197,6 +203,30 @@ fun SettingsScreen(
                     exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(150))
                 ) {
                     LiveSettingsPanel(liveSettings = liveSettings, palette = palette)
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // ─── Interaction Settings — expandable header ───────────
+            item {
+                SectionHeader(
+                    title = "Interaction Settings",
+                    isExpanded = interactionExpanded,
+                    rotation = interactionArrowRotation,
+                    onClick = { interactionExpanded = !interactionExpanded },
+                    palette = palette
+                )
+            }
+
+            // Interaction Settings panel — collapsible
+            item {
+                AnimatedVisibility(
+                    visible = interactionExpanded,
+                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
+                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(150))
+                ) {
+                    InteractionSettingsPanel(liveSettings = liveSettings, palette = palette)
                 }
             }
 
@@ -407,6 +437,75 @@ private fun LiveSettingsPanel(
             value = liveSettings.mediaResolution,
             options = LiveSettingsManager.availableMediaResolutions,
             onSelect = { liveSettings.updateMediaResolution(it) },
+            palette = palette
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+// ─── Interaction Settings Panel (Canvas, Interpreter, etc.) ─────────────────
+
+@Composable
+private fun InteractionSettingsPanel(
+    liveSettings: LiveSettingsManager,
+    palette: ApsaraColorPalette
+) {
+    Column(
+        modifier = Modifier.padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Description
+        Text(
+            text = "Shared settings for Canvas, Interpreter, and other Interactions API tools.",
+            fontSize = 12.sp,
+            color = palette.textTertiary,
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+        )
+
+        // Model selector
+        SettingsDropdown(
+            label = "Interaction Model",
+            value = liveSettings.interactionModel,
+            options = LiveSettingsManager.availableInteractionModels,
+            onSelect = { liveSettings.updateInteractionModel(it) },
+            palette = palette
+        )
+
+        // Max output tokens
+        SettingsDropdown(
+            label = "Max Output Tokens",
+            value = liveSettings.interactionMaxOutputTokens.toString(),
+            options = LiveSettingsManager.availableMaxOutputTokens.map { it.toString() },
+            onSelect = { liveSettings.updateInteractionMaxOutputTokens(it.toIntOrNull() ?: 65536) },
+            palette = palette
+        )
+
+        // Temperature slider
+        SettingsSlider(
+            label = "Interaction Temperature",
+            value = liveSettings.interactionTemperature,
+            onValueChange = { liveSettings.updateInteractionTemperature(it) },
+            valueRange = 0f..2f,
+            palette = palette
+        )
+
+        // Thinking level
+        SettingsDropdown(
+            label = "Thinking Level",
+            value = liveSettings.interactionThinkingLevel,
+            options = LiveSettingsManager.availableThinkingLevels,
+            onSelect = { liveSettings.updateInteractionThinkingLevel(it) },
+            palette = palette
+        )
+
+        // Thinking summaries
+        SettingsDropdown(
+            label = "Thinking Summaries",
+            value = liveSettings.interactionThinkingSummaries,
+            options = LiveSettingsManager.availableThinkingSummaries,
+            onSelect = { liveSettings.updateInteractionThinkingSummaries(it) },
             palette = palette
         )
 

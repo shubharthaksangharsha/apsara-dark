@@ -19,6 +19,7 @@ import { createInteractionsRouter } from './interactions/interactions-router.js'
 import { handleInteractionsWebSocket } from './interactions/interactions-ws-handler.js';
 import { DEFAULT_MODEL } from './interactions/interactions-config.js';
 import { createCanvasRouter } from './canvas/canvas-router.js';
+import { createInterpreterRouter } from './interpreter/interpreter-router.js';
 
 // --- Environment ---
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -77,6 +78,9 @@ app.use('/api/interactions', createInteractionsRouter(GEMINI_API_KEY));
 
 // --- Canvas API (app generation endpoints) ---
 app.use('/api/canvas', createCanvasRouter(GEMINI_API_KEY));
+
+// --- Interpreter API (code execution endpoints) ---
+app.use('/api/interpreter', createInterpreterRouter(GEMINI_API_KEY));
 
 // --- HTTP + WebSocket server ---
 const server = createServer(app);
@@ -147,6 +151,10 @@ server.listen(PORT, HOST, () => {
   console.log('  ║  Canvas API (app generation):                     ║');
   console.log(`  ║    REST:   /api/canvas                            ║`);
   console.log(`  ║    Render: /api/canvas/:id/render                 ║`);
+  console.log('  ║                                                   ║');
+  console.log('  ║  Interpreter API (code execution):                ║');
+  console.log(`  ║    REST:   /api/interpreter                       ║`);
+  console.log(`  ║    Images: /api/interpreter/:id/images            ║`);
   console.log('  ╚═══════════════════════════════════════════════════╝');
   console.log('');
   console.log(`  Live Model: ${DEFAULT_SESSION_CONFIG.model}`);
