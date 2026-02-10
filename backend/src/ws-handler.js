@@ -463,20 +463,22 @@ export function handleWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat — rely on client-side ping (OkHttp pingInterval=25s).
-  // Do NOT send server-side ws.ping() — dual pings cause "Control frames must be final"
-  // errors when pings collide with fragmented message frames on the wire.
-  // Instead, just detect stale connections by listening for pong from client pings.
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+  // Heartbeat — NO server-side ws.ping().
+  // Caddy reverse proxy doesn't transparently pass WebSocket protocol-level
+  // ping/pong frames, causing "Control frames must be final" on the client.
+  // Instead, the client sends JSON { type: "ping" } every 25s, and we respond
+  // with { type: "pong" }. Detect stale connections by checking activity.
+  let lastActivity = Date.now();
+  const origSend = send;
+  // Track activity on every incoming message
+  ws.on('message', () => { lastActivity = Date.now(); });
   heartbeatInterval = setInterval(() => {
-    if (!ws.isAlive) {
-      console.log('[WS] Client heartbeat timeout — terminating');
-      return ws.terminate();
+    const elapsed = Date.now() - lastActivity;
+    if (elapsed > 90000) { // 90s with no messages = stale
+      console.log('[WS] No activity for 90s — terminating stale connection');
+      ws.terminate();
     }
-    ws.isAlive = false;
-    // Don't send ws.ping() — let the client's OkHttp pingInterval handle keepalive
-  }, 60000);
+  }, 30000);
 
   // Cleanup on disconnect
   ws.on('close', async () => {

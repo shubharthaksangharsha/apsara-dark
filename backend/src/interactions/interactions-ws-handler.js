@@ -255,17 +255,17 @@ export function handleInteractionsWebSocket(ws, apiKey) {
     }
   });
 
-  // Heartbeat — rely on client-side ping (OkHttp pingInterval).
-  // Do NOT send server-side ws.ping() to avoid "Control frames must be final" errors.
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+  // Heartbeat — NO server-side ws.ping().
+  // Caddy doesn't transparently proxy WebSocket ping/pong frames.
+  // Detect stale connections by tracking message activity.
+  let lastActivity = Date.now();
+  ws.on('message', () => { lastActivity = Date.now(); });
   heartbeatInterval = setInterval(() => {
-    if (!ws.isAlive) {
-      console.log('[InteractionsWS] Client heartbeat timeout — terminating');
-      return ws.terminate();
+    if (Date.now() - lastActivity > 90000) {
+      console.log('[InteractionsWS] No activity for 90s — terminating');
+      ws.terminate();
     }
-    ws.isAlive = false;
-  }, 60000);
+  }, 30000);
 
   // Cleanup
   ws.on('close', () => {
