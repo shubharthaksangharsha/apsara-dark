@@ -277,23 +277,45 @@ fun HomeScreen(
         }
     }
 
-    // Sync tool haptic: continuous dot-dot-dot pulsing while any sync tool is running
+    // Sync tool haptic: dot·dot·hold — dot·dot·hold pulsing while any sync tool is running
     val hasSyncRunning = allToolCalls.any {
         it.mode != "async" && it.status == LiveMessage.ToolStatus.RUNNING
     }
     LaunchedEffect(hasSyncRunning) {
         if (!hapticEnabled || vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
         if (hasSyncRunning) {
-            // Continuous pulsing: 60ms on, 200ms off — feels like dot·dot·dot
+            // Pattern: dot(50ms) · pause(100ms) · dot(50ms) · pause(100ms) · hold(180ms) · pause(300ms)
+            // This creates a smooth "tap-tap-buzz" rhythm
             while (true) {
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vibrator.vibrate(VibrationEffect.createOneShot(60L, 150))
+                        // dot
+                        vibrator.vibrate(VibrationEffect.createOneShot(50L, 120))
                     } else {
-                        @Suppress("DEPRECATION") vibrator.vibrate(60L)
+                        @Suppress("DEPRECATION") vibrator.vibrate(50L)
                     }
                 } catch (_: Exception) {}
-                kotlinx.coroutines.delay(260L) // 60ms vibrate + 200ms pause
+                kotlinx.coroutines.delay(150L) // 50ms vibrate + 100ms pause
+
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // dot
+                        vibrator.vibrate(VibrationEffect.createOneShot(50L, 120))
+                    } else {
+                        @Suppress("DEPRECATION") vibrator.vibrate(50L)
+                    }
+                } catch (_: Exception) {}
+                kotlinx.coroutines.delay(150L) // 50ms vibrate + 100ms pause
+
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // hold (longer, slightly stronger)
+                        vibrator.vibrate(VibrationEffect.createOneShot(180L, 180))
+                    } else {
+                        @Suppress("DEPRECATION") vibrator.vibrate(180L)
+                    }
+                } catch (_: Exception) {}
+                kotlinx.coroutines.delay(480L) // 180ms vibrate + 300ms pause before next cycle
             }
         }
     }

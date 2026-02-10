@@ -229,34 +229,7 @@ export class InterpreterService {
       result.output = result.text;
     }
 
-    // Deduplicate images — safety net in case plt.show() was still called despite prompt.
-    // Keep only unique images based on prefix + size heuristic.
-    if (result.images.length > 1) {
-      const kept = [result.images[0]];
-      for (let i = 1; i < result.images.length; i++) {
-        const img = result.images[i];
-        const imgData = img.data || '';
-        const imgLen = imgData.length;
-        let isDuplicate = false;
-        for (const prev of kept) {
-          const prevData = prev.data || '';
-          const prevLen = prevData.length;
-          // Prefix match (catches identical or near-identical renders)
-          if (imgData.substring(0, 200) === prevData.substring(0, 200)) {
-            isDuplicate = true; break;
-          }
-          // Size within 10% — same plot rendered at slightly different quality
-          if (imgLen > 0 && prevLen > 0) {
-            const ratio = imgLen / prevLen;
-            if (ratio > 0.90 && ratio < 1.10) {
-              isDuplicate = true; break;
-            }
-          }
-        }
-        if (!isDuplicate) kept.push(img);
-      }
-      result.images = kept;
-    }
+    console.log(`[Interpreter] Extracted ${result.images.length} image(s)`);
 
     return result;
   }
