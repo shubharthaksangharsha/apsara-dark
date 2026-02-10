@@ -894,22 +894,19 @@ private fun CodeExecutionCard(
     toolCall: EmbeddedToolCall,
     palette: ApsaraColorPalette
 ) {
-    var codeExpanded by remember { mutableStateOf(false) }
-    var outputExpanded by remember { mutableStateOf(false) }
-    var imagesExpanded by remember { mutableStateOf(false) }
-    var resultExpanded by remember { mutableStateOf(false) }
-    var headerExpanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
 
     val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
     val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
     val hasCode = !toolCall.codeBlock.isNullOrBlank()
     val hasOutput = !toolCall.codeOutput.isNullOrBlank()
     val hasImages = toolCall.codeImages.isNotEmpty()
+    val hasContent = hasCode || hasOutput || hasImages
 
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Header row — status + title, tappable to expand all sections
+        // Header row — tap to expand/collapse (same pattern as ToolCallCard)
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
@@ -920,18 +917,8 @@ private fun CodeExecutionCard(
                             else palette.textTertiary.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
                 )
-                .clickable(enabled = isCompleted) {
-                    headerExpanded = !headerExpanded
-                    if (headerExpanded) {
-                        // Auto-expand sections that have content
-                        if (hasCode) codeExpanded = true
-                        if (hasOutput) outputExpanded = true
-                        if (hasImages) imagesExpanded = true
-                    } else {
-                        codeExpanded = false
-                        outputExpanded = false
-                        imagesExpanded = false
-                    }
+                .clickable(enabled = isCompleted && hasContent) {
+                    expanded = !expanded
                 }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -976,147 +963,84 @@ private fun CodeExecutionCard(
             }
 
             // Expand hint when completed
-            if (isCompleted) {
+            if (isCompleted && hasContent) {
                 Text(
-                    text = if (headerExpanded) "▾" else "▸",
+                    text = if (expanded) "▾" else "▸",
                     fontSize = 12.sp,
                     color = palette.textTertiary
                 )
             }
         }
 
-        // ── Collapsible: Code ──
-        if (hasCode) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
+        // ── Expandable content — all shown at once on tap, matching ToolCallCard ──
+        AnimatedVisibility(
+            visible = expanded && isCompleted,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+        ) {
+            Column(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { codeExpanded = !codeExpanded }
-                    .padding(vertical = 3.dp, horizontal = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = if (codeExpanded) "▾" else "▸",
-                    fontSize = 11.sp,
-                    color = palette.accent
-                )
-                Text(
-                    text = "Code",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.accent
-                )
-            }
-            AnimatedVisibility(
-                visible = codeExpanded,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
-            ) {
-                Text(
-                    text = toolCall.codeBlock ?: "",
-                    fontSize = 11.sp,
-                    color = palette.textSecondary,
-                    lineHeight = 16.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface)
-                        .border(
-                            0.5.dp,
-                            palette.accent.copy(alpha = 0.15f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(10.dp)
-                )
-            }
-        }
+                // ── Code ──
+                if (hasCode) {
+                    Text(
+                        text = "Code",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.accent,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    Text(
+                        text = toolCall.codeBlock ?: "",
+                        fontSize = 11.sp,
+                        color = palette.textSecondary,
+                        lineHeight = 16.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
 
-        // ── Collapsible: Output ──
-        if (hasOutput) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { outputExpanded = !outputExpanded }
-                    .padding(vertical = 3.dp, horizontal = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (outputExpanded) "▾" else "▸",
-                    fontSize = 11.sp,
-                    color = palette.textTertiary
-                )
-                Text(
-                    text = "Output",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.textTertiary
-                )
-            }
-            AnimatedVisibility(
-                visible = outputExpanded,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
-            ) {
-                Text(
-                    text = toolCall.codeOutput ?: "",
-                    fontSize = 11.sp,
-                    color = palette.textTertiary,
-                    lineHeight = 16.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface)
-                        .border(
-                            0.5.dp,
-                            palette.textTertiary.copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(10.dp)
-                )
-            }
-        }
+                // ── Output ──
+                if (hasOutput) {
+                    Text(
+                        text = "Output",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.textTertiary,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    Text(
+                        text = toolCall.codeOutput ?: "",
+                        fontSize = 11.sp,
+                        color = palette.textTertiary,
+                        lineHeight = 16.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.textTertiary.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
 
-        // ── Collapsible: Images ──
-        if (hasImages) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { imagesExpanded = !imagesExpanded }
-                    .padding(vertical = 3.dp, horizontal = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (imagesExpanded) "▾" else "▸",
-                    fontSize = 11.sp,
-                    color = palette.accent
-                )
-                Text(
-                    text = "Images (${toolCall.codeImages.size})",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.accent
-                )
-            }
-            AnimatedVisibility(
-                visible = imagesExpanded,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                // ── Images ──
+                if (hasImages) {
+                    Text(
+                        text = "Images (${toolCall.codeImages.size})",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.accent,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
                     toolCall.codeImages.forEach { imgInfo ->
                         CodeImageInline(
                             imageUrl = "https://apsara-dark-backend.devshubh.me${imgInfo.url}",
@@ -1124,64 +1048,32 @@ private fun CodeExecutionCard(
                         )
                     }
                 }
-            }
-        }
 
-        // ── Collapsible: Result JSON (fallback when no code/output extracted) ──
-        if (!hasCode && !hasOutput && isCompleted && !toolCall.result.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { resultExpanded = !resultExpanded }
-                    .padding(vertical = 3.dp, horizontal = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (resultExpanded) "▾" else "▸",
-                    fontSize = 11.sp,
-                    color = palette.textTertiary
-                )
-                Text(
-                    text = "Result",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = palette.textTertiary
-                )
-            }
-            AnimatedVisibility(
-                visible = resultExpanded,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
-            ) {
-                val formattedResult = try {
-                    toolCall.result
-                        ?.replace(",\"", ",\n  \"")
-                        ?.replace("{\"", "{\n  \"")
-                        ?.replace("}", "\n}")
-                        ?.replace("\\\"", "\"")
-                        ?: ""
-                } catch (_: Exception) { toolCall.result ?: "" }
+                // ── Fallback: Result JSON ──
+                if (!hasCode && !hasOutput && !toolCall.result.isNullOrBlank()) {
+                    val formattedResult = try {
+                        toolCall.result
+                            ?.replace(",\"", ",\n  \"")
+                            ?.replace("{\"", "{\n  \"")
+                            ?.replace("}", "\n}")
+                            ?.replace("\\\"", "\"")
+                            ?: ""
+                    } catch (_: Exception) { toolCall.result ?: "" }
 
-                Text(
-                    text = formattedResult,
-                    fontSize = 11.sp,
-                    color = palette.textTertiary,
-                    lineHeight = 16.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface)
-                        .border(
-                            0.5.dp,
-                            palette.textTertiary.copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(10.dp)
-                )
+                    Text(
+                        text = formattedResult,
+                        fontSize = 11.sp,
+                        color = palette.textTertiary,
+                        lineHeight = 16.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.textTertiary.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
             }
         }
     }

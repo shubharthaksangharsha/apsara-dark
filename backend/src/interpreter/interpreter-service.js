@@ -223,16 +223,32 @@ export class InterpreterService {
       result.output = result.text;
     }
 
-    // Deduplicate images — plt.savefig() + plt.show() can produce duplicate outputs
+    // Deduplicate images — plt.savefig() + plt.show() can produce duplicate outputs.
+    // savefig and show may produce slightly different renders, so we use multiple strategies:
+    //   1. Exact match on first 200 chars of base64 (catches identical images)
+    //   2. Size-based match: if two images have the same length (within 2%), keep only the first
+    //      This catches savefig vs show which render the same chart at slightly different quality
     if (result.images.length > 1) {
-      const seen = new Set();
-      result.images = result.images.filter(img => {
-        // Use first 100 chars of base64 as fingerprint (fast, avoids comparing megabytes)
-        const key = (img.data || '').substring(0, 100);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const kept = [result.images[0]];
+      for (let i = 1; i < result.images.length; i++) {
+        const img = result.images[i];
+        const imgLen = (img.data || '').length;
+        const imgPrefix = (img.data || '').substring(0, 200);
+        let isDuplicate = false;
+        for (const prev of kept) {
+          const prevLen = (prev.data || '').length;
+          const prevPrefix = (prev.data || '').substring(0, 200);
+          // Strategy 1: exact prefix match
+          if (imgPrefix === prevPrefix) { isDuplicate = true; break; }
+          // Strategy 2: size within 5% — likely same chart rendered twice
+          if (imgLen > 0 && prevLen > 0) {
+            const ratio = imgLen / prevLen;
+            if (ratio > 0.95 && ratio < 1.05) { isDuplicate = true; break; }
+          }
+        }
+        if (!isDuplicate) kept.push(img);
+      }
+      result.images = kept;
     }
 
     return result;
