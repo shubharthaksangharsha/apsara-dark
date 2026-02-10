@@ -453,32 +453,17 @@ export async function executeCodeEditTool(args = {}, onProgress, interactionConf
     return { success: false, error: 'instructions is required' };
   }
 
-  // Get the existing session
+  // Verify session exists
   const existing = interpreterStore.getDetail(session_id);
   if (!existing) {
     return { success: false, error: `Code session not found: ${session_id}` };
   }
 
-  // Build an edit prompt with full context
-  const editPrompt = `You previously wrote and executed this Python code for the request: "${existing.prompt}"
-
-Here is the code that was executed:
-\`\`\`python
-${existing.code}
-\`\`\`
-
-${existing.output ? `The output was:\n\`\`\`\n${existing.output}\n\`\`\`\n` : ''}
-${existing.error ? `There was an error: ${existing.error}\n` : ''}
-
-Now the user wants the following changes:
-${instructions}
-
-Write the COMPLETE updated Python code incorporating these changes and execute it. Do not just show the diff — write and run the full updated code.`;
-
   try {
-    const session = await interpreterService.runCode({
-      prompt: editPrompt,
-      title: `Edit: ${existing.title}`,
+    // Use editCode — updates the SAME session instead of creating a new one
+    const session = await interpreterService.editCode({
+      sessionId: session_id,
+      instructions,
       config: interactionConfig,
       onProgress: (status, message) => {
         console.log(`[Code Edit Tool] ${status}: ${message}`);
@@ -495,7 +480,7 @@ Write the COMPLETE updated Python code incorporating these changes and execute i
 
     return {
       success: true,
-      session_id: session.id,
+      session_id: session.id,           // Same ID as the original session
       original_session_id: session_id,
       title: session.title,
       status: session.status,

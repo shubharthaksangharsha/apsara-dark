@@ -674,6 +674,7 @@ private fun CanvasDetailViewer(
                     title = a.optString("title", ""),
                     description = a.optString("description", ""),
                     prompt = a.optString("prompt", ""),
+                    originalPrompt = a.optString("original_prompt", a.optString("prompt", "")),
                     status = a.optString("status", ""),
                     error = if (a.isNull("error")) null else a.optString("error"),
                     attempts = a.optInt("attempts", 0),
@@ -681,7 +682,8 @@ private fun CanvasDetailViewer(
                     htmlLength = a.optInt("html_length", 0),
                     createdAt = a.optString("created_at", ""),
                     updatedAt = a.optString("updated_at", ""),
-                    generationLog = logEntries
+                    generationLog = logEntries,
+                    editCount = a.optInt("edit_count", 0)
                 )
             }
             detail = result
@@ -1025,6 +1027,8 @@ private fun colorForCodeLine(line: String, palette: ApsaraColorPalette): android
 @Composable
 private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) {
     val prompt = detail.prompt
+    val originalPrompt = detail.originalPrompt
+    val hasBeenEdited = detail.editCount > 0 && originalPrompt.isNotBlank() && originalPrompt != prompt
 
     if (prompt.isBlank()) {
         Box(
@@ -1034,15 +1038,17 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
             Text("No prompt recorded", fontSize = 14.sp, color = palette.textTertiary)
         }
     } else {
+        var showOriginal by remember { mutableStateOf(false) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
-            // Header
+            // Current prompt header
             Text(
-                "Original Prompt",
+                if (hasBeenEdited) "Current Prompt (with edits)" else "Original Prompt",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.textSecondary,
@@ -1065,6 +1071,52 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                 )
             }
 
+            // Show original prompt (collapsible) if edited
+            if (hasBeenEdited) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showOriginal = !showOriginal }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showOriginal) "▾ Original Prompt" else "▸ Original Prompt",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.accent
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "(${detail.editCount} edit${if (detail.editCount > 1) "s" else ""} applied)",
+                        fontSize = 11.sp,
+                        color = palette.textTertiary
+                    )
+                }
+                AnimatedVisibility(
+                    visible = showOriginal,
+                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                ) {
+                    Surface(
+                        color = palette.surfaceContainer.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            text = originalPrompt,
+                            fontSize = 14.sp,
+                            color = palette.textSecondary,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
 
             // Quick stats
@@ -1082,6 +1134,13 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                     value = "${prompt.length}",
                     palette = palette
                 )
+                if (hasBeenEdited) {
+                    DetailChip(
+                        label = "Edits",
+                        value = "${detail.editCount}",
+                        palette = palette
+                    )
+                }
             }
         }
     }

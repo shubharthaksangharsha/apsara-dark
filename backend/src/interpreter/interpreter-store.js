@@ -25,9 +25,14 @@ class InterpreterStore {
       id,
       title: title || 'Untitled Code',
       prompt: prompt || '',
+      original_prompt: prompt || '',   // Never changes — the first prompt that created this session
       code: code || '',
       output: null,          // stdout/stderr text output
       images: [],             // Array of { data: base64, mime_type: string }
+      previous_code: null,             // Stores the code before last edit
+      previous_output: null,           // Stores the output before last edit
+      edit_instructions: null,         // The last edit instruction applied
+      edit_count: 0,                   // How many times this session was edited
       status: 'running',      // running | completed | error
       error: null,
       created_at: now,
@@ -107,9 +112,14 @@ class InterpreterStore {
       id: session.id,
       title: session.title,
       prompt: session.prompt,
+      original_prompt: session.original_prompt || session.prompt,
       code: session.code,
       output: session.output,
       images: session.images || [],
+      previous_code: session.previous_code || null,
+      previous_output: session.previous_output || null,
+      edit_instructions: session.edit_instructions || null,
+      edit_count: session.edit_count || 0,
       status: session.status,
       error: session.error,
       created_at: session.created_at,

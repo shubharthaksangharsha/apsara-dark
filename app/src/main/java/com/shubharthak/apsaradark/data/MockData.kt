@@ -39,6 +39,7 @@ data class CanvasAppDetail(
     val title: String,
     val description: String = "",
     val prompt: String = "",
+    val originalPrompt: String = "",
     val status: String = "",
     val error: String? = null,
     val attempts: Int = 0,
@@ -46,7 +47,8 @@ data class CanvasAppDetail(
     val htmlLength: Int = 0,
     val createdAt: String = "",
     val updatedAt: String = "",
-    val generationLog: List<CanvasLogEntry> = emptyList()
+    val generationLog: List<CanvasLogEntry> = emptyList(),
+    val editCount: Int = 0
 )
 
 data class CanvasLogEntry(
@@ -76,9 +78,14 @@ data class CodeSessionDetail(
     val id: String,
     val title: String,
     val prompt: String = "",
+    val originalPrompt: String = "",
     val code: String = "",
     val output: String = "",
     val images: List<CodeSessionImage> = emptyList(),
+    val previousCode: String? = null,
+    val previousOutput: String? = null,
+    val editInstructions: String? = null,
+    val editCount: Int = 0,
     val status: String = "",
     val error: String? = null,
     val createdAt: String = "",

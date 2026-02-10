@@ -26,6 +26,7 @@ class CanvasStore {
       title: title || 'Untitled App',
       description: description || '',
       prompt: prompt || '',
+      original_prompt: prompt || '',   // Never changes — the first prompt that created this app
       html: null,
       status: 'generating', // generating | testing | fixing | ready | error
       error: null,
@@ -73,8 +74,8 @@ class CanvasStore {
         attempts: updates.attempts || app.attempts,
       });
     }
-    // Track edit history — when html changes with a prompt that differs
-    if (updates.html && updates.status === 'ready' && app.prompt) {
+    // Track edit history — increment when prompt is updated (edit instruction appended)
+    if (updates.prompt && updates.prompt !== app.prompt && updates.status === 'generating') {
       if (!app.edit_count) app.edit_count = 0;
       app.edit_count++;
     }
@@ -113,6 +114,7 @@ class CanvasStore {
       title: app.title,
       description: app.description,
       prompt: app.prompt,
+      original_prompt: app.original_prompt || app.prompt,
       status: app.status,
       error: app.error,
       attempts: app.attempts,
@@ -121,6 +123,7 @@ class CanvasStore {
       created_at: app.created_at,
       updated_at: app.updated_at,
       generation_log: app.generation_log || [],
+      edit_count: app.edit_count || 0,
     };
   }
 }

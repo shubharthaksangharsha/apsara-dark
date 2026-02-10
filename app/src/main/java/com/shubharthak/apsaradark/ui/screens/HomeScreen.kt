@@ -233,6 +233,71 @@ fun HomeScreen(
         }
     }
 
+    // ─── Haptic feedback for tool/function calls ──────────────────────
+    // Sync tools: continuous pulsing (dot-dot-dot) while running
+    // Async tools: single pulse on start, single pulse on completion
+    val currentMessages = liveViewModel.messages
+
+    // Collect all tool calls across all messages to detect status changes
+    val allToolCalls = remember(currentMessages.toList()) {
+        currentMessages.flatMap { it.toolCalls }
+    }
+    // Track which tool IDs we've already pulsed for start/completion (async)
+    val asyncPulsedStart = remember { mutableSetOf<String>() }
+    val asyncPulsedComplete = remember { mutableSetOf<String>() }
+
+    // Async tool haptic: single pulse on start, single pulse on completion
+    LaunchedEffect(allToolCalls.toList()) {
+        if (!hapticEnabled || vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
+        for (tc in allToolCalls) {
+            if (tc.mode == "async") {
+                // Pulse once when first seen (RUNNING)
+                if (tc.status == LiveMessage.ToolStatus.RUNNING && tc.id !in asyncPulsedStart) {
+                    asyncPulsedStart.add(tc.id)
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(80L, 180))
+                        } else {
+                            @Suppress("DEPRECATION") vibrator.vibrate(80L)
+                        }
+                    } catch (_: Exception) {}
+                }
+                // Pulse once when completed
+                if (tc.status == LiveMessage.ToolStatus.COMPLETED && tc.id !in asyncPulsedComplete) {
+                    asyncPulsedComplete.add(tc.id)
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(120L, 220))
+                        } else {
+                            @Suppress("DEPRECATION") vibrator.vibrate(120L)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
+    // Sync tool haptic: continuous dot-dot-dot pulsing while any sync tool is running
+    val hasSyncRunning = allToolCalls.any {
+        it.mode != "async" && it.status == LiveMessage.ToolStatus.RUNNING
+    }
+    LaunchedEffect(hasSyncRunning) {
+        if (!hapticEnabled || vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
+        if (hasSyncRunning) {
+            // Continuous pulsing: 60ms on, 200ms off — feels like dot·dot·dot
+            while (true) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(60L, 150))
+                    } else {
+                        @Suppress("DEPRECATION") vibrator.vibrate(60L)
+                    }
+                } catch (_: Exception) {}
+                kotlinx.coroutines.delay(260L) // 60ms vibrate + 200ms pause
+            }
+        }
+    }
+
     val isLiveActive = liveViewModel.liveState != LiveSessionViewModel.LiveState.IDLE
 
     // ─── Canvas notification: Snackbar + system notification ─────────

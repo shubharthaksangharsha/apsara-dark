@@ -169,8 +169,9 @@ export class CanvasService {
 
     onProgress?.('generating', `Editing "${existing.title}"...`);
 
-    // Log the edit start
-    canvasStore.update(canvasId, { status: 'generating' });
+    // Log the edit start — also update prompt to include edit instructions
+    const updatedPrompt = `${existing.prompt}\n\n[Edit: ${instructions}]`;
+    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt });
 
     try {
       // Build the edit prompt with full context

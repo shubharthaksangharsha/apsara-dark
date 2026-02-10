@@ -36,11 +36,15 @@ Your mission: Write and execute Python code to solve problems, create visualizat
 **Rules:**
 1. Always write clean, well-commented Python code.
 2. Use the code_execution tool to run your code — NEVER just show code in text.
-3. For visualizations, use matplotlib and save plots:
+3. For visualizations, use matplotlib:
+   - import matplotlib
+   - matplotlib.use('Agg')          # MUST set non-interactive backend BEFORE importing pyplot
    - import matplotlib.pyplot as plt
    - Create your plot
    - plt.savefig('output.png', dpi=150, bbox_inches='tight')
-   - plt.show()
+   - plt.close()                    # ALWAYS close the figure — do NOT call plt.show()
+   **CRITICAL: NEVER call plt.show(). Always use plt.savefig() then plt.close().
+   Calling plt.show() creates a duplicate image. Only use plt.savefig() + plt.close().**
 4. For data analysis, use pandas, numpy, and scipy as needed.
 5. Handle errors gracefully — if code fails, explain why and fix it.
 6. Keep code concise but readable.
@@ -59,7 +63,8 @@ Your mission: Write and execute Python code to solve problems, create visualizat
 **Output Format:**
 - Always execute the code — don't just describe what it would do.
 - Print results to stdout so they appear in the output.
-- For images, save to files — they will be captured automatically.`;
+- For images, save to files — they will be captured automatically.
+- NEVER call plt.show() — only plt.savefig() + plt.close().`;
 
 export class InterpreterService {
   constructor(apiKey) {
@@ -223,12 +228,8 @@ export class InterpreterService {
       result.output = result.text;
     }
 
-    // Deduplicate images — plt.savefig() + plt.show() can produce duplicate outputs.
-    // savefig and show may produce slightly different renders, so we use multiple strategies:
-    //   1. Exact match on first 200 chars of base64 (catches identical images)
-    //   2. Size within 5% AND middle-segment match — catches same chart rendered at slightly
-    //      different quality (savefig vs show) while avoiding false positives on genuinely
-    //      different images that happen to be similar in size
+    // Deduplicate images — safety net in case plt.show() was still called despite prompt.
+    // Keep only unique images based on prefix + size heuristic.
     if (result.images.length > 1) {
       const kept = [result.images[0]];
       for (let i = 1; i < result.images.length; i++) {
@@ -239,17 +240,15 @@ export class InterpreterService {
         for (const prev of kept) {
           const prevData = prev.data || '';
           const prevLen = prevData.length;
-          // Strategy 1: exact prefix match
+          // Prefix match (catches identical or near-identical renders)
           if (imgData.substring(0, 200) === prevData.substring(0, 200)) {
             isDuplicate = true; break;
           }
-          // Strategy 2: size within 5% AND middle 100-char segment matches
+          // Size within 10% — same plot rendered at slightly different quality
           if (imgLen > 0 && prevLen > 0) {
             const ratio = imgLen / prevLen;
-            if (ratio > 0.95 && ratio < 1.05) {
-              const midA = imgData.substring(Math.floor(imgLen * 0.4), Math.floor(imgLen * 0.4) + 100);
-              const midB = prevData.substring(Math.floor(prevLen * 0.4), Math.floor(prevLen * 0.4) + 100);
-              if (midA === midB) { isDuplicate = true; break; }
+            if (ratio > 0.90 && ratio < 1.10) {
+              isDuplicate = true; break;
             }
           }
         }
@@ -259,6 +258,99 @@ export class InterpreterService {
     }
 
     return result;
+  }
+
+  /**
+   * Edit an existing code session — re-runs with modified instructions,
+   * updating the SAME session (not creating a new one).
+   * 
+   * @param {Object} params
+   * @param {string} params.sessionId - Existing session to edit
+   * @param {string} params.instructions - What to change
+   * @param {Object} [params.config] - Override default config
+   * @param {Function} [params.onProgress] - Progress callback
+   * @returns {Promise<Object>} The updated code session
+   */
+  async editCode({ sessionId, instructions, config = {}, onProgress }) {
+    const mergedConfig = { ...INTERPRETER_DEFAULTS, ...config };
+
+    const existing = interpreterStore.get(sessionId);
+    if (!existing) {
+      throw new Error(`Code session not found: ${sessionId}`);
+    }
+
+    onProgress?.('running', `Editing "${existing.title}"...`);
+
+    // Snapshot current code/output as "previous" before overwriting
+    interpreterStore.update(sessionId, {
+      status: 'running',
+      previous_code: existing.code || null,
+      previous_output: existing.output || null,
+      edit_instructions: instructions,
+      edit_count: (existing.edit_count || 0) + 1,
+    });
+
+    try {
+      // Build the edit prompt with full context
+      const editPrompt = `You previously wrote and executed this Python code for the request: "${existing.prompt}"
+
+Here is the code that was executed:
+\`\`\`python
+${existing.code}
+\`\`\`
+
+${existing.output ? `The output was:\n\`\`\`\n${existing.output}\n\`\`\`\n` : ''}
+${existing.error ? `There was an error: ${existing.error}\n` : ''}
+
+Now the user wants the following changes:
+${instructions}
+
+Write the COMPLETE updated Python code incorporating these changes and execute it. Do not just show the diff — write and run the full updated code.`;
+
+      const request = {
+        model: mergedConfig.model,
+        input: editPrompt,
+        system_instruction: INTERPRETER_SYSTEM_INSTRUCTION,
+        tools: [{ type: 'code_execution' }],
+      };
+
+      const genConfig = {};
+      if (mergedConfig.temperature !== undefined) genConfig.temperature = mergedConfig.temperature;
+      if (mergedConfig.max_output_tokens !== undefined) genConfig.max_output_tokens = mergedConfig.max_output_tokens;
+      if (mergedConfig.thinking_level) genConfig.thinking_level = mergedConfig.thinking_level;
+      if (mergedConfig.thinking_summaries) genConfig.thinking_summaries = mergedConfig.thinking_summaries;
+      if (Object.keys(genConfig).length > 0) request.generation_config = genConfig;
+
+      console.log('[Interpreter] Editing session:', sessionId);
+      onProgress?.('running', 'Generating and executing updated code...');
+
+      const interaction = await this.client.interactions.create(request);
+      const result = this._extractResults(interaction);
+
+      // Update the SAME session with new code/output/images
+      interpreterStore.update(sessionId, {
+        code: result.code || '',
+        output: result.output || '',
+        images: result.images || [],
+        prompt: `${existing.prompt}\n\n[Edit: ${instructions}]`,
+        status: result.error ? 'error' : 'completed',
+        error: result.error || null,
+      });
+
+      onProgress?.(result.error ? 'error' : 'completed',
+        result.error ? `Error: ${result.error}` : `Code updated and executed successfully`);
+
+      return interpreterStore.get(sessionId);
+
+    } catch (error) {
+      console.error('[Interpreter] Edit error:', error.message);
+      interpreterStore.update(sessionId, {
+        status: 'error',
+        error: error.message,
+      });
+      onProgress?.('error', error.message);
+      return interpreterStore.get(sessionId);
+    }
   }
 
   /**

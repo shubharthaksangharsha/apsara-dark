@@ -374,9 +374,14 @@ private fun CodeSessionDetailViewer(
                     id = json.getString("id"),
                     title = json.getString("title"),
                     prompt = json.optString("prompt", ""),
+                    originalPrompt = json.optString("original_prompt", json.optString("prompt", "")),
                     code = json.optString("code", ""),
                     output = json.optString("output", ""),
                     images = images,
+                    previousCode = if (json.isNull("previous_code")) null else json.optString("previous_code", "").ifEmpty { null },
+                    previousOutput = if (json.isNull("previous_output")) null else json.optString("previous_output", "").ifEmpty { null },
+                    editInstructions = if (json.isNull("edit_instructions")) null else json.optString("edit_instructions", "").ifEmpty { null },
+                    editCount = json.optInt("edit_count", 0),
                     status = json.optString("status", ""),
                     error = json.optString("error", ""),
                     createdAt = json.optString("created_at", ""),
@@ -445,13 +450,56 @@ private fun CodeSessionDetailViewer(
                 // Prompt
                 if (detail!!.prompt.isNotBlank()) {
                     item {
-                        DetailSection(title = "Prompt", palette = palette) {
+                        val hasBeenEdited = detail!!.editCount > 0 &&
+                            detail!!.originalPrompt.isNotBlank() &&
+                            detail!!.originalPrompt != detail!!.prompt
+                        DetailSection(
+                            title = if (hasBeenEdited) "Prompt (with edits)" else "Prompt",
+                            palette = palette
+                        ) {
                             Text(
                                 text = detail!!.prompt,
                                 fontSize = 13.sp,
                                 color = palette.textSecondary,
                                 lineHeight = 18.sp
                             )
+                            // Show original prompt collapsible if edited
+                            if (hasBeenEdited) {
+                                var showOriginalPrompt by remember { mutableStateOf(false) }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { showOriginalPrompt = !showOriginalPrompt }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (showOriginalPrompt) "▾ Original Prompt" else "▸ Original Prompt",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.accent
+                                    )
+                                }
+                                AnimatedVisibility(
+                                    visible = showOriginalPrompt,
+                                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                                ) {
+                                    Text(
+                                        text = detail!!.originalPrompt,
+                                        fontSize = 12.sp,
+                                        color = palette.textTertiary,
+                                        lineHeight = 17.sp,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(palette.surface)
+                                            .padding(10.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -494,6 +542,55 @@ private fun CodeSessionDetailViewer(
                                     lineHeight = 18.sp
                                 )
                             }
+
+                            // Show previous code collapsible if session was edited
+                            if (!detail!!.previousCode.isNullOrBlank()) {
+                                var showPrevCode by remember { mutableStateOf(false) }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { showPrevCode = !showPrevCode }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (showPrevCode) "▾ Previous Code" else "▸ Previous Code",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.accent
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "(before edit)",
+                                        fontSize = 11.sp,
+                                        color = palette.textTertiary
+                                    )
+                                }
+                                AnimatedVisibility(
+                                    visible = showPrevCode,
+                                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(palette.surface)
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(10.dp)
+                                    ) {
+                                        Text(
+                                            text = detail!!.previousCode ?: "",
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = palette.textTertiary,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -534,6 +631,48 @@ private fun CodeSessionDetailViewer(
                                     color = palette.accent,
                                     lineHeight = 18.sp
                                 )
+                            }
+
+                            // Show previous output collapsible if session was edited
+                            if (!detail!!.previousOutput.isNullOrBlank()) {
+                                var showPrevOutput by remember { mutableStateOf(false) }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { showPrevOutput = !showPrevOutput }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (showPrevOutput) "▾ Previous Output" else "▸ Previous Output",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.accent
+                                    )
+                                }
+                                AnimatedVisibility(
+                                    visible = showPrevOutput,
+                                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(palette.surface)
+                                            .padding(10.dp)
+                                    ) {
+                                        Text(
+                                            text = detail!!.previousOutput ?: "",
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = palette.textTertiary,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
