@@ -31,6 +31,7 @@ class CanvasStore {
       status: 'generating', // generating | testing | fixing | ready | error
       error: null,
       attempts: 0,
+      config_used: null,               // Config used for generation/last edit (model, temperature, etc.)
       created_at: now,
       updated_at: now,
       // Generation log — tracks each step of the generation process
@@ -124,6 +125,7 @@ class CanvasStore {
       updated_at: app.updated_at,
       generation_log: app.generation_log || [],
       edit_count: app.edit_count || 0,
+      config_used: app.config_used || null,
     };
   }
 }

@@ -638,8 +638,7 @@ private fun CanvasDetailViewer(
     var detail by remember { mutableStateOf<CanvasAppDetail?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Log, 3=Info
-    var copiedSnack by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Log, 3=Config, 4=Info
 
     // Fetch detail from backend
     LaunchedEffect(app.id) {
@@ -683,7 +682,15 @@ private fun CanvasDetailViewer(
                     createdAt = a.optString("created_at", ""),
                     updatedAt = a.optString("updated_at", ""),
                     generationLog = logEntries,
-                    editCount = a.optInt("edit_count", 0)
+                    editCount = a.optInt("edit_count", 0),
+                    configUsed = if (a.isNull("config_used")) null else {
+                        val cfg = a.optJSONObject("config_used")
+                        if (cfg != null) {
+                            val map = mutableMapOf<String, String>()
+                            cfg.keys().forEach { key -> map[key] = cfg.opt(key)?.toString() ?: "" }
+                            map
+                        } else null
+                    }
                 )
             }
             detail = result
@@ -693,15 +700,7 @@ private fun CanvasDetailViewer(
         isLoading = false
     }
 
-    // Dismiss copied snackbar
-    LaunchedEffect(copiedSnack) {
-        if (copiedSnack) {
-            kotlinx.coroutines.delay(1500)
-            copiedSnack = false
-        }
-    }
-
-    val tabTitles = listOf("Code", "Prompt", "Log", "Info")
+    val tabTitles = listOf("Code", "Prompt", "Log", "Config", "Info")
 
     Scaffold(
         containerColor = palette.surface,
@@ -745,7 +744,6 @@ private fun CanvasDetailViewer(
                             }
                             if (textToCopy != null) {
                                 clipboardManager.setText(AnnotatedString(textToCopy))
-                                copiedSnack = true
                             }
                         }) {
                             Icon(
@@ -855,34 +853,8 @@ private fun CanvasDetailViewer(
                         0 -> CodeTabContent(detail!!, palette)
                         1 -> PromptTabContent(detail!!, palette)
                         2 -> LogTabContent(detail!!, palette)
-                        3 -> InfoTabContent(detail!!, palette)
-                    }
-                }
-            }
-
-            // ─── Copied snackbar ────────────────────────────────────────
-            AnimatedVisibility(
-                visible = copiedSnack,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        color = palette.accent,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            "Copied to clipboard",
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                            fontSize = 13.sp,
-                            color = palette.surface,
-                            fontWeight = FontWeight.Medium
-                        )
+                        3 -> ConfigTabContent(detail!!, palette)
+                        4 -> InfoTabContent(detail!!, palette)
                     }
                 }
             }
@@ -1255,6 +1227,97 @@ private fun LogTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) 
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Config tab — shows the interaction config used for generation/edit.
+ */
+@Composable
+private fun ConfigTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) {
+    val config = detail.configUsed
+
+    if (config.isNullOrEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = palette.textTertiary.copy(alpha = 0.4f),
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("No config data available", fontSize = 14.sp, color = palette.textTertiary)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Config tracking is available for new generations",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary.copy(alpha = 0.6f)
+                )
+            }
+        }
+    } else {
+        val configLabels = mapOf(
+            "model" to "Model",
+            "max_output_tokens" to "Max Output Tokens",
+            "thinking_level" to "Thinking Level",
+            "thinking_summaries" to "Thinking Summaries",
+            "temperature" to "Temperature"
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Interaction Config",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.textSecondary,
+                letterSpacing = 0.5.sp
+            )
+
+            Text(
+                if (detail.editCount > 0) "Config used for the last edit" else "Config used for generation",
+                fontSize = 12.sp,
+                color = palette.textTertiary
+            )
+
+            config.forEach { (key, value) ->
+                val label = configLabels[key] ?: key.replaceFirstChar { it.uppercase() }
+                Surface(
+                    color = palette.surfaceContainer,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            color = palette.textTertiary
+                        )
+                        Text(
+                            text = value,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = palette.accent
+                        )
                     }
                 }
             }

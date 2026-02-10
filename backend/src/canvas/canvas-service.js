@@ -93,6 +93,9 @@ export class CanvasService {
       prompt,
     });
 
+    // Store the config used for this generation
+    canvasStore.update(canvas.id, { config_used: mergedConfig });
+
     onProgress?.('generating', `Creating "${autoTitle}"...`);
 
     try {
@@ -171,7 +174,7 @@ export class CanvasService {
 
     // Log the edit start — also update prompt to include edit instructions
     const updatedPrompt = `${existing.prompt}\n\n[Edit: ${instructions}]`;
-    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt });
+    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt, config_used: mergedConfig });
 
     try {
       // Build the edit prompt with full context
@@ -328,6 +331,9 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
       description: prompt,
       prompt,
     });
+
+    // Store the config used for this stream generation
+    canvasStore.update(canvas.id, { config_used: mergedConfig });
 
     yield { event: 'canvas.created', canvas_id: canvas.id, title: autoTitle };
     yield { event: 'canvas.status', status: 'generating', message: `Creating "${autoTitle}"...` };

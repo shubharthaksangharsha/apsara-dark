@@ -385,7 +385,15 @@ private fun CodeSessionDetailViewer(
                     status = json.optString("status", ""),
                     error = json.optString("error", ""),
                     createdAt = json.optString("created_at", ""),
-                    updatedAt = json.optString("updated_at", "")
+                    updatedAt = json.optString("updated_at", ""),
+                    configUsed = if (json.isNull("config_used")) null else {
+                        val cfg = json.optJSONObject("config_used")
+                        if (cfg != null) {
+                            val map = mutableMapOf<String, String>()
+                            cfg.keys().forEach { key -> map[key] = cfg.opt(key)?.toString() ?: "" }
+                            map
+                        } else null
+                    }
                 )
             }
             detail = result
@@ -724,6 +732,42 @@ private fun CodeSessionDetailViewer(
                         Text("Created: ${detail!!.createdAt}", fontSize = 12.sp, color = palette.textTertiary)
                         if (detail!!.updatedAt.isNotBlank()) {
                             Text("Updated: ${detail!!.updatedAt}", fontSize = 12.sp, color = palette.textTertiary)
+                        }
+                    }
+                }
+
+                // Config used for generation
+                if (detail!!.configUsed != null && detail!!.configUsed!!.isNotEmpty()) {
+                    item {
+                        DetailSection(title = "Interaction Config", palette = palette) {
+                            val configLabels = mapOf(
+                                "model" to "Model",
+                                "max_output_tokens" to "Max Output Tokens",
+                                "thinking_level" to "Thinking Level",
+                                "thinking_summaries" to "Thinking Summaries",
+                                "temperature" to "Temperature"
+                            )
+                            detail!!.configUsed!!.forEach { (key, value) ->
+                                val label = configLabels[key] ?: key.replaceFirstChar { it.uppercase() }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 12.sp,
+                                        color = palette.textTertiary
+                                    )
+                                    Text(
+                                        text = value,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = palette.accent
+                                    )
+                                }
+                            }
                         }
                     }
                 }

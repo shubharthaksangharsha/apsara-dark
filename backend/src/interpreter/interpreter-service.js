@@ -129,6 +129,7 @@ export class InterpreterService {
         code: result.code || '',
         output: result.output || '',
         images: result.images || [],
+        config_used: mergedConfig,
         status: result.error ? 'error' : 'completed',
         error: result.error || null,
       });
@@ -333,6 +334,7 @@ Write the COMPLETE updated Python code incorporating these changes and execute i
         output: result.output || '',
         images: result.images || [],
         prompt: `${existing.prompt}\n\n[Edit: ${instructions}]`,
+        config_used: mergedConfig,
         status: result.error ? 'error' : 'completed',
         error: result.error || null,
       });

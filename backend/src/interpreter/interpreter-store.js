@@ -33,6 +33,7 @@ class InterpreterStore {
       previous_output: null,           // Stores the output before last edit
       edit_instructions: null,         // The last edit instruction applied
       edit_count: 0,                   // How many times this session was edited
+      config_used: null,               // Config used for generation/last edit (model, temperature, etc.)
       status: 'running',      // running | completed | error
       error: null,
       created_at: now,
@@ -120,6 +121,7 @@ class InterpreterStore {
       previous_output: session.previous_output || null,
       edit_instructions: session.edit_instructions || null,
       edit_count: session.edit_count || 0,
+      config_used: session.config_used || null,
       status: session.status,
       error: session.error,
       created_at: session.created_at,

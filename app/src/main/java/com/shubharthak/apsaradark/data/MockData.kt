@@ -48,7 +48,8 @@ data class CanvasAppDetail(
     val createdAt: String = "",
     val updatedAt: String = "",
     val generationLog: List<CanvasLogEntry> = emptyList(),
-    val editCount: Int = 0
+    val editCount: Int = 0,
+    val configUsed: Map<String, String>? = null
 )
 
 data class CanvasLogEntry(
@@ -89,7 +90,8 @@ data class CodeSessionDetail(
     val status: String = "",
     val error: String? = null,
     val createdAt: String = "",
-    val updatedAt: String = ""
+    val updatedAt: String = "",
+    val configUsed: Map<String, String>? = null
 )
 
 data class CodeSessionImage(
