@@ -32,6 +32,10 @@ class CanvasStore {
       attempts: 0,
       created_at: now,
       updated_at: now,
+      // Generation log — tracks each step of the generation process
+      generation_log: [
+        { step: 'created', timestamp: now, message: 'Canvas entry created' }
+      ],
     };
     this.apps.set(id, app);
     return app;
@@ -58,7 +62,18 @@ class CanvasStore {
   update(id, updates) {
     const app = this.apps.get(id);
     if (!app) return null;
-    Object.assign(app, updates, { updated_at: new Date().toISOString() });
+    const now = new Date().toISOString();
+    // Auto-log status changes
+    if (updates.status && updates.status !== app.status) {
+      if (!app.generation_log) app.generation_log = [];
+      app.generation_log.push({
+        step: updates.status,
+        timestamp: now,
+        message: updates.error || `Status changed to ${updates.status}`,
+        attempts: updates.attempts || app.attempts,
+      });
+    }
+    Object.assign(app, updates, { updated_at: now });
     return app;
   }
 
@@ -80,6 +95,28 @@ class CanvasStore {
       status: app.status,
       created_at: app.created_at,
     }));
+  }
+
+  /**
+   * Get full detail for a canvas app (includes code, prompt, generation log).
+   */
+  getDetail(id) {
+    const app = this.apps.get(id);
+    if (!app) return null;
+    return {
+      id: app.id,
+      title: app.title,
+      description: app.description,
+      prompt: app.prompt,
+      status: app.status,
+      error: app.error,
+      attempts: app.attempts,
+      html: app.html,
+      html_length: app.html ? app.html.length : 0,
+      created_at: app.created_at,
+      updated_at: app.updated_at,
+      generation_log: app.generation_log || [],
+    };
   }
 }
 

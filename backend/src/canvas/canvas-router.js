@@ -93,8 +93,9 @@ export function createCanvasRouter(apiKey) {
   });
 
   // ─── GET /api/canvas/:id ──────────────────────────────────────────────────
+  // Returns full canvas detail including code, prompt, and generation log
   router.get('/:id', (req, res) => {
-    const app = canvasStore.get(req.params.id);
+    const app = canvasStore.getDetail(req.params.id);
     if (!app) {
       return res.status(404).json({ error: true, message: 'Canvas not found' });
     }

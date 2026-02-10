@@ -31,6 +31,31 @@ data class CanvasApp(
     val renderUrl: String = ""
 )
 
+/**
+ * Full detail of a canvas app including code, prompt, and generation log.
+ */
+data class CanvasAppDetail(
+    val id: String,
+    val title: String,
+    val description: String = "",
+    val prompt: String = "",
+    val status: String = "",
+    val error: String? = null,
+    val attempts: Int = 0,
+    val html: String? = null,
+    val htmlLength: Int = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val generationLog: List<CanvasLogEntry> = emptyList()
+)
+
+data class CanvasLogEntry(
+    val step: String,
+    val timestamp: String,
+    val message: String = "",
+    val attempts: Int = 0
+)
+
 object MockData {
 
     val drawerItems = listOf(
