@@ -731,7 +731,7 @@ private fun ApsaraBubble(
         if (toolCalls.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 toolCalls.forEach { tc ->
-                    if (tc.name == "run_code") {
+                    if (tc.name == "run_code" || tc.name == "edit_code") {
                         CodeExecutionCard(
                             toolCall = tc,
                             palette = palette

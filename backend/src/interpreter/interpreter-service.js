@@ -226,24 +226,31 @@ export class InterpreterService {
     // Deduplicate images — plt.savefig() + plt.show() can produce duplicate outputs.
     // savefig and show may produce slightly different renders, so we use multiple strategies:
     //   1. Exact match on first 200 chars of base64 (catches identical images)
-    //   2. Size-based match: if two images have the same length (within 2%), keep only the first
-    //      This catches savefig vs show which render the same chart at slightly different quality
+    //   2. Size within 5% AND middle-segment match — catches same chart rendered at slightly
+    //      different quality (savefig vs show) while avoiding false positives on genuinely
+    //      different images that happen to be similar in size
     if (result.images.length > 1) {
       const kept = [result.images[0]];
       for (let i = 1; i < result.images.length; i++) {
         const img = result.images[i];
-        const imgLen = (img.data || '').length;
-        const imgPrefix = (img.data || '').substring(0, 200);
+        const imgData = img.data || '';
+        const imgLen = imgData.length;
         let isDuplicate = false;
         for (const prev of kept) {
-          const prevLen = (prev.data || '').length;
-          const prevPrefix = (prev.data || '').substring(0, 200);
+          const prevData = prev.data || '';
+          const prevLen = prevData.length;
           // Strategy 1: exact prefix match
-          if (imgPrefix === prevPrefix) { isDuplicate = true; break; }
-          // Strategy 2: size within 5% — likely same chart rendered twice
+          if (imgData.substring(0, 200) === prevData.substring(0, 200)) {
+            isDuplicate = true; break;
+          }
+          // Strategy 2: size within 5% AND middle 100-char segment matches
           if (imgLen > 0 && prevLen > 0) {
             const ratio = imgLen / prevLen;
-            if (ratio > 0.95 && ratio < 1.05) { isDuplicate = true; break; }
+            if (ratio > 0.95 && ratio < 1.05) {
+              const midA = imgData.substring(Math.floor(imgLen * 0.4), Math.floor(imgLen * 0.4) + 100);
+              const midB = prevData.substring(Math.floor(prevLen * 0.4), Math.floor(prevLen * 0.4) + 100);
+              if (midA === midB) { isDuplicate = true; break; }
+            }
           }
         }
         if (!isDuplicate) kept.push(img);

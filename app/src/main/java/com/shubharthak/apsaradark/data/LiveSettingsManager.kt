@@ -179,9 +179,11 @@ class LiveSettingsManager(context: Context) {
         }
         if (toolInterpreter) {
             enabledTools.add("run_code")
+            enabledTools.add("edit_code")
             enabledTools.add("list_code_sessions")
             enabledTools.add("get_code_session")
             toolAsyncModes["run_code"] = toolInterpreterAsync
+            toolAsyncModes["edit_code"] = toolInterpreterAsync
         }
         if (enabledTools.isNotEmpty()) {
             config["enabledTools"] = enabledTools

@@ -358,7 +358,7 @@ class LiveSessionViewModel(
                 var extractedCode: String? = null
                 var extractedOutput: String? = null
                 var extractedImages: List<CodeImageInfo> = emptyList()
-                if (result.name == "run_code") {
+                if (result.name == "run_code" || result.name == "edit_code") {
                     try {
                         val json = org.json.JSONObject(result.result)
                         val resp = if (json.has("response")) json.getJSONObject("response") else json
@@ -370,7 +370,7 @@ class LiveSessionViewModel(
                                 val img = imgsArr.getJSONObject(i)
                                 CodeImageInfo(
                                     index = img.optInt("index", i),
-                                    mimeType = img.optString("mime_type", "image/png"),
+                                    mimeType = img.optString("mimeType", img.optString("mime_type", "image/png")),
                                     url = img.optString("url", "")
                                 )
                             }
@@ -522,45 +522,45 @@ class LiveSessionViewModel(
             }
         }.launchIn(viewModelScope)
 
-        // ── Interpreter: executable code — attach to current run_code tool call ──
+        // ── Interpreter: executable code — attach to current run_code/edit_code tool call ──
         wsClient.executableCode.onEach { event ->
             Log.d(TAG, "Executable code received: ${event.code.take(80)}...")
-            // Find the latest run_code tool call and attach the code
+            // Find the latest run_code or edit_code tool call and attach the code
             val idx = messages.indexOfLast {
                 it.role == LiveMessage.Role.APSARA &&
-                it.toolCalls.any { tc -> tc.name == "run_code" }
+                it.toolCalls.any { tc -> tc.name == "run_code" || tc.name == "edit_code" }
             }
             if (idx >= 0) {
                 val updatedCalls = messages[idx].toolCalls.map { tc ->
-                    if (tc.name == "run_code" && tc.codeBlock.isNullOrEmpty()) {
+                    if ((tc.name == "run_code" || tc.name == "edit_code") && tc.codeBlock.isNullOrEmpty()) {
                         tc.copy(codeBlock = event.code)
                     } else tc
                 }
                 messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
             }
             // Also update pending buffer
-            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" || it.name == "edit_code" }
             if (pendingIdx >= 0 && pendingToolCalls[pendingIdx].codeBlock.isNullOrEmpty()) {
                 pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(codeBlock = event.code)
             }
         }.launchIn(viewModelScope)
 
-        // ── Interpreter: code execution result — attach output to run_code tool call ──
+        // ── Interpreter: code execution result — attach output to run_code/edit_code tool call ──
         wsClient.codeExecutionResult.onEach { event ->
             Log.d(TAG, "Code execution result: ${event.output.take(80)}...")
             val idx = messages.indexOfLast {
                 it.role == LiveMessage.Role.APSARA &&
-                it.toolCalls.any { tc -> tc.name == "run_code" }
+                it.toolCalls.any { tc -> tc.name == "run_code" || tc.name == "edit_code" }
             }
             if (idx >= 0) {
                 val updatedCalls = messages[idx].toolCalls.map { tc ->
-                    if (tc.name == "run_code") {
+                    if (tc.name == "run_code" || tc.name == "edit_code") {
                         tc.copy(codeOutput = (tc.codeOutput ?: "") + event.output)
                     } else tc
                 }
                 messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
             }
-            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" || it.name == "edit_code" }
             if (pendingIdx >= 0) {
                 pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
                     codeOutput = (pendingToolCalls[pendingIdx].codeOutput ?: "") + event.output
@@ -568,7 +568,7 @@ class LiveSessionViewModel(
             }
         }.launchIn(viewModelScope)
 
-        // ── Interpreter: images — attach image URLs to run_code tool call ──
+        // ── Interpreter: images — attach image URLs to run_code/edit_code tool call ──
         wsClient.interpreterImages.onEach { event ->
             Log.d(TAG, "Interpreter images: sessionId=${event.sessionId}, count=${event.images.size}")
             val imageInfos = event.images.map { img ->
@@ -576,17 +576,17 @@ class LiveSessionViewModel(
             }
             val idx = messages.indexOfLast {
                 it.role == LiveMessage.Role.APSARA &&
-                it.toolCalls.any { tc -> tc.name == "run_code" }
+                it.toolCalls.any { tc -> tc.name == "run_code" || tc.name == "edit_code" }
             }
             if (idx >= 0) {
                 val updatedCalls = messages[idx].toolCalls.map { tc ->
-                    if (tc.name == "run_code") {
+                    if (tc.name == "run_code" || tc.name == "edit_code") {
                         tc.copy(codeImages = tc.codeImages + imageInfos)
                     } else tc
                 }
                 messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
             }
-            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" }
+            val pendingIdx = pendingToolCalls.indexOfLast { it.name == "run_code" || it.name == "edit_code" }
             if (pendingIdx >= 0) {
                 pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
                     codeImages = pendingToolCalls[pendingIdx].codeImages + imageInfos
