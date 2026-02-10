@@ -223,6 +223,18 @@ export class InterpreterService {
       result.output = result.text;
     }
 
+    // Deduplicate images — plt.savefig() + plt.show() can produce duplicate outputs
+    if (result.images.length > 1) {
+      const seen = new Set();
+      result.images = result.images.filter(img => {
+        // Use first 100 chars of base64 as fingerprint (fast, avoids comparing megabytes)
+        const key = (img.data || '').substring(0, 100);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
     return result;
   }
 

@@ -312,7 +312,7 @@ private fun CodeSessionCard(
                 if (session.imageCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "📊 ${session.imageCount} image${if (session.imageCount > 1) "s" else ""}",
+                        text = "${session.imageCount} image${if (session.imageCount > 1) "s" else ""}",
                         fontSize = 12.sp,
                         color = palette.textTertiary
                     )

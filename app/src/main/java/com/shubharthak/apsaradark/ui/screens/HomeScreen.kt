@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -895,7 +896,9 @@ private fun CodeExecutionCard(
 ) {
     var codeExpanded by remember { mutableStateOf(false) }
     var outputExpanded by remember { mutableStateOf(false) }
+    var imagesExpanded by remember { mutableStateOf(false) }
     var resultExpanded by remember { mutableStateOf(false) }
+    var headerExpanded by remember { mutableStateOf(false) }
 
     val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
     val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
@@ -906,7 +909,7 @@ private fun CodeExecutionCard(
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Header row — status + title
+        // Header row — status + title, tappable to expand all sections
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
@@ -917,6 +920,19 @@ private fun CodeExecutionCard(
                             else palette.textTertiary.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
                 )
+                .clickable(enabled = isCompleted) {
+                    headerExpanded = !headerExpanded
+                    if (headerExpanded) {
+                        // Auto-expand sections that have content
+                        if (hasCode) codeExpanded = true
+                        if (hasOutput) outputExpanded = true
+                        if (hasImages) imagesExpanded = true
+                    } else {
+                        codeExpanded = false
+                        outputExpanded = false
+                        imagesExpanded = false
+                    }
+                }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -955,6 +971,15 @@ private fun CodeExecutionCard(
                         }
                     },
                     fontSize = 11.sp,
+                    color = palette.textTertiary
+                )
+            }
+
+            // Expand hint when completed
+            if (isCompleted) {
+                Text(
+                    text = if (headerExpanded) "▾" else "▸",
+                    fontSize = 12.sp,
                     color = palette.textTertiary
                 )
             }
@@ -1058,6 +1083,50 @@ private fun CodeExecutionCard(
             }
         }
 
+        // ── Collapsible: Images ──
+        if (hasImages) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { imagesExpanded = !imagesExpanded }
+                    .padding(vertical = 3.dp, horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = if (imagesExpanded) "▾" else "▸",
+                    fontSize = 11.sp,
+                    color = palette.accent
+                )
+                Text(
+                    text = "Images (${toolCall.codeImages.size})",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.accent
+                )
+            }
+            AnimatedVisibility(
+                visible = imagesExpanded,
+                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    toolCall.codeImages.forEach { imgInfo ->
+                        CodeImageInline(
+                            imageUrl = "https://apsara-dark-backend.devshubh.me${imgInfo.url}",
+                            palette = palette
+                        )
+                    }
+                }
+            }
+        }
+
         // ── Collapsible: Result JSON (fallback when no code/output extracted) ──
         if (!hasCode && !hasOutput && isCompleted && !toolCall.result.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(2.dp))
@@ -1114,6 +1183,58 @@ private fun CodeExecutionCard(
                         .padding(10.dp)
                 )
             }
+        }
+    }
+}
+
+// ─── Inline image loader for Code Execution images in live mode ─────────────
+
+@Composable
+private fun CodeImageInline(
+    imageUrl: String,
+    palette: ApsaraColorPalette
+) {
+    var imageBitmap by remember(imageUrl) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var isLoading by remember(imageUrl) { mutableStateOf(true) }
+
+    LaunchedEffect(imageUrl) {
+        isLoading = true
+        try {
+            val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val url = java.net.URL(imageUrl)
+                val stream = url.openStream()
+                android.graphics.BitmapFactory.decodeStream(stream)
+            }
+            imageBitmap = bitmap?.asImageBitmap()
+        } catch (_: Exception) { }
+        isLoading = false
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(palette.surface)
+            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (imageBitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = imageBitmap!!,
+                contentDescription = "Code output image",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+            )
+        } else if (isLoading) {
+            CircularProgressIndicator(
+                color = palette.accent,
+                modifier = Modifier.size(24.dp).padding(4.dp),
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text("Failed to load image", fontSize = 11.sp, color = palette.textTertiary)
         }
     }
 }

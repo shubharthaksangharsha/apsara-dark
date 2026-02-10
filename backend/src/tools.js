@@ -131,6 +131,24 @@ export const TOOL_DECLARATIONS = [
       required: ['session_id'],
     },
   },
+  {
+    name: 'edit_code',
+    description: 'Edits and re-runs an existing code session with new instructions. Reads the previous code, prompt, and output, then generates updated code based on the edit instructions and executes it. Use this when the user asks to edit, update, fix, modify, or improve code they previously ran. You MUST call list_code_sessions first to get the session_id, then call this tool with the session_id and the edit instructions.',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'The ID of the code session to edit. Get this from list_code_sessions.',
+        },
+        instructions: {
+          type: 'string',
+          description: 'Detailed instructions on what to change, fix, add, or improve in the code. Be specific about the desired changes.',
+        },
+      },
+      required: ['session_id', 'instructions'],
+    },
+  },
 ];
 
 // ─── Tool Handlers ──────────────────────────────────────────────────────────
@@ -347,7 +365,7 @@ export async function executeCanvasEditTool(args = {}, onProgress, interactionCo
  * Check if a tool requires async execution (takes significant time).
  */
 export function isLongRunningTool(name) {
-  return name === 'apsara_canvas' || name === 'edit_canvas' || name === 'run_code';
+  return name === 'apsara_canvas' || name === 'edit_canvas' || name === 'run_code' || name === 'edit_code';
 }
 
 /**
@@ -411,4 +429,87 @@ export async function executeInterpreterTool(args = {}, onProgress, interactionC
  */
 export function getToolNames() {
   return TOOL_DECLARATIONS.map(t => t.name);
+}
+
+/**
+ * Execute the edit_code tool asynchronously.
+ * Reads the existing code session and re-runs with edit instructions.
+ * 
+ * @param {Object} args - { session_id, instructions }
+ * @param {Function} onProgress - Callback for progress updates
+ * @param {Object} interactionConfig - Config overrides from session
+ * @returns {Promise<Object>} Result to send back to Gemini
+ */
+export async function executeCodeEditTool(args = {}, onProgress, interactionConfig = {}) {
+  if (!interpreterService) {
+    return { success: false, error: 'Interpreter service not initialized' };
+  }
+
+  const { session_id, instructions } = args;
+  if (!session_id) {
+    return { success: false, error: 'session_id is required' };
+  }
+  if (!instructions) {
+    return { success: false, error: 'instructions is required' };
+  }
+
+  // Get the existing session
+  const existing = interpreterStore.getDetail(session_id);
+  if (!existing) {
+    return { success: false, error: `Code session not found: ${session_id}` };
+  }
+
+  // Build an edit prompt with full context
+  const editPrompt = `You previously wrote and executed this Python code for the request: "${existing.prompt}"
+
+Here is the code that was executed:
+\`\`\`python
+${existing.code}
+\`\`\`
+
+${existing.output ? `The output was:\n\`\`\`\n${existing.output}\n\`\`\`\n` : ''}
+${existing.error ? `There was an error: ${existing.error}\n` : ''}
+
+Now the user wants the following changes:
+${instructions}
+
+Write the COMPLETE updated Python code incorporating these changes and execute it. Do not just show the diff — write and run the full updated code.`;
+
+  try {
+    const session = await interpreterService.runCode({
+      prompt: editPrompt,
+      title: `Edit: ${existing.title}`,
+      config: interactionConfig,
+      onProgress: (status, message) => {
+        console.log(`[Code Edit Tool] ${status}: ${message}`);
+        onProgress?.(status, message);
+      },
+    });
+
+    // Build image URLs for client
+    const imageUrls = (session.images || []).map((img, i) => ({
+      index: i,
+      mimeType: img.mime_type,
+      url: `/api/interpreter/${session.id}/images/${i}`,
+    }));
+
+    return {
+      success: true,
+      session_id: session.id,
+      original_session_id: session_id,
+      title: session.title,
+      status: session.status,
+      code: session.code || '',
+      output: session.output || '',
+      image_count: imageUrls.length,
+      images: imageUrls,
+      error: session.error || null,
+      message: session.status === 'completed'
+        ? `Code updated and executed successfully! ${imageUrls.length > 0 ? `Generated ${imageUrls.length} image(s).` : ''} Check "My Code" for details.`
+        : `Code edit had an issue: ${session.error}`,
+    };
+  } catch (error) {
+    console.error('[Code Edit Tool] Error:', error.message);
+    return { success: false, error: error.message };
+  }
 }
