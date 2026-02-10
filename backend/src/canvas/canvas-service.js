@@ -174,7 +174,10 @@ export class CanvasService {
 
     // Log the edit start — also update prompt to include edit instructions
     const updatedPrompt = `${existing.prompt}\n\n[Edit: ${instructions}]`;
-    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt, config_used: mergedConfig });
+    
+    // Generate a new title that reflects the edit instructions
+    const newTitle = this._generateEditTitle(existing.title, instructions);
+    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt, title: newTitle, config_used: mergedConfig });
 
     try {
       // Build the edit prompt with full context
@@ -182,8 +185,22 @@ export class CanvasService {
 
       // Generate the updated code
       let html = await this._generate(editPrompt, mergedConfig);
+      
+      // Try to extract a better title from the generated HTML's <title> tag
+      const htmlTitleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      if (htmlTitleMatch && htmlTitleMatch[1]) {
+        const htmlTitle = htmlTitleMatch[1].trim();
+        // Only use the HTML title if it's meaningful (not generic like "App" or empty)
+        if (htmlTitle.length > 2 && htmlTitle.toLowerCase() !== 'app' && htmlTitle.toLowerCase() !== 'document') {
+          canvasStore.update(canvasId, { title: htmlTitle });
+        }
+      }
+      
       canvasStore.update(canvasId, { html, status: 'testing', attempts: (existing.attempts || 0) + 1 });
       onProgress?.('testing', 'Validating edited code...');
+
+      // Get the final title (may have been updated from HTML)
+      const finalTitle = canvasStore.get(canvasId)?.title || newTitle;
 
       // Validate and auto-fix loop
       const maxAttempts = 3;
@@ -194,7 +211,7 @@ export class CanvasService {
         
         if (errors.length === 0) {
           canvasStore.update(canvasId, { html, status: 'ready', error: null });
-          onProgress?.('ready', `"${existing.title}" has been updated!`);
+          onProgress?.('ready', `"${finalTitle}" has been updated!`);
           return canvasStore.get(canvasId);
         }
 
@@ -204,7 +221,7 @@ export class CanvasService {
             status: 'ready', 
             error: `Validation warnings after edit (served anyway): ${errors.join('; ')}` 
           });
-          onProgress?.('ready', `"${existing.title}" updated (with minor warnings)`);
+          onProgress?.('ready', `"${finalTitle}" updated (with minor warnings)`);
           return canvasStore.get(canvasId);
         }
 
@@ -246,7 +263,7 @@ export class CanvasService {
     }
     
     parts.push(`\nThe user wants the following changes:\n${instructions}`);
-    parts.push(`\nApply the requested changes to the existing code. Keep everything that works well, and only change/add/remove what's needed to fulfill the edit request. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`);
+    parts.push(`\nApply the requested changes to the existing code. Keep everything that works well, and only change/add/remove what's needed to fulfill the edit request. If the edit fundamentally changes the app's purpose or type, update the <title> tag accordingly. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`);
     
     return parts.join('\n');
   }
@@ -477,5 +494,41 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
       ? prompt.substring(0, 40).replace(/\s+\S*$/, '') + '…'
       : prompt;
     return truncated.charAt(0).toUpperCase() + truncated.slice(1);
+  }
+
+  /**
+   * Generate a new title after editing a canvas app.
+   * Uses the edit instructions to create a title that reflects the updated app.
+   * Falls back to instruction-based title if instructions describe a clear rename.
+   */
+  _generateEditTitle(existingTitle, instructions) {
+    if (!instructions) return existingTitle;
+    
+    // Check if instructions explicitly mention making it into something new
+    // e.g., "make it a reminder app", "convert to a calculator", "change to a todo list"
+    const transformPatterns = [
+      /(?:make|turn|convert|change|transform)\s+(?:it|this)\s+(?:into|to|into a|to a)\s+(?:a\s+)?(.+?)(?:\s+app)?$/i,
+      /(?:make|create|build)\s+(?:it|this)\s+a\s+(.+?)(?:\s+app)?$/i,
+      /(?:rename|retitle)\s+(?:it|this)?\s*(?:to|as)\s+["']?(.+?)["']?$/i,
+    ];
+    
+    for (const pattern of transformPatterns) {
+      const match = instructions.match(pattern);
+      if (match && match[1]) {
+        const newName = match[1].trim();
+        // Capitalize first letter of each word
+        const titled = newName.replace(/\b\w/g, c => c.toUpperCase());
+        return titled.endsWith('App') ? titled : `${titled} App`;
+      }
+    }
+    
+    // Otherwise, generate title from the instructions
+    const title = this._generateTitle(instructions);
+    // If the generated title is too similar to instructions being just a verb phrase,
+    // prepend the context from the existing title
+    if (title.length < 15 && existingTitle) {
+      return `${existingTitle} (edited)`;
+    }
+    return title;
   }
 }

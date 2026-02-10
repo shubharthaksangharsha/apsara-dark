@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -21,16 +22,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubharthak.apsaradark.data.LiveSettingsManager
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +51,9 @@ fun SettingsScreen(
     var liveExpanded by remember { mutableStateOf(false) }
     var interactionExpanded by remember { mutableStateOf(false) }
     var highlightOutputTranscription by remember { mutableStateOf(false) }
+
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     val generalArrowRotation by animateFloatAsState(
         targetValue = if (generalExpanded) 180f else 0f,
@@ -97,6 +105,7 @@ fun SettingsScreen(
         }
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
@@ -141,17 +150,29 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Normal,
                                     color = palette.textPrimary
                                 )
-                                Text(
-                                    text = "Enable Output Transcription ↗",
-                                    fontSize = 12.sp,
-                                    color = palette.accent,
-                                    textDecoration = TextDecoration.Underline,
-                                    modifier = Modifier.clickable {
-                                        // Auto-expand Live Settings section and highlight Output Transcription
-                                        liveExpanded = true
-                                        highlightOutputTranscription = true
-                                    }
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Make sure to enable ",
+                                        fontSize = 12.sp,
+                                        color = palette.textTertiary
+                                    )
+                                    Text(
+                                        text = "Output Transcription ↗",
+                                        fontSize = 12.sp,
+                                        color = palette.accent,
+                                        fontWeight = FontWeight.Medium,
+                                        textDecoration = TextDecoration.Underline,
+                                        modifier = Modifier.clickable {
+                                            // Auto-expand Live Settings section, highlight, and scroll
+                                            liveExpanded = true
+                                            highlightOutputTranscription = true
+                                            coroutineScope.launch {
+                                                delay(300) // Wait for expand animation
+                                                listState.animateScrollToItem(index = 7) // Live Settings panel item
+                                            }
+                                        }
+                                    )
+                                }
                             }
                             Switch(
                                 checked = liveSettings.hapticFeedback,
