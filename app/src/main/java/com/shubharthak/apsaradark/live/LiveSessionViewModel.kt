@@ -768,6 +768,11 @@ class LiveSessionViewModel(
     }
 
     fun sendText(text: String) {
+        // Immediately clear audio playback — text should interrupt Apsara's speech
+        audioManager.clearPlaybackQueue()
+        finalizeOutputMessage()
+        activeSpeaker = ActiveSpeaker.USER
+
         wsClient.sendText(text)
         // Add as user message immediately
         messages.add(LiveMessage(LiveMessage.Role.USER, text, isStreaming = false))

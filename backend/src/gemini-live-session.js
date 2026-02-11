@@ -350,7 +350,10 @@ export class GeminiLiveSession {
   }
 
   /**
-   * Send text input as client content.
+   * Send text input with interruption support.
+   * First sends a realtimeInput text signal to trigger activity detection (which interrupts
+   * any ongoing model response), then sends the full text as clientContent with turnComplete.
+   * This ensures text messages interrupt Apsara's speech just like voice does.
    */
   sendText(text) {
     if (!this.session || !this.connected) {
@@ -358,6 +361,17 @@ export class GeminiLiveSession {
       return;
     }
 
+    // Step 1: Send a realtimeInput text signal to trigger activity detection → interruption
+    // This causes the server to detect user activity and send an 'interrupted' event,
+    // which tells the client to stop audio playback immediately.
+    try {
+      this.session.sendRealtimeInput({ text });
+    } catch (e) {
+      console.warn('[GeminiLive] realtimeInput text not supported, falling back:', e.message);
+    }
+
+    // Step 2: Send the actual text as clientContent with turnComplete
+    // clientContent interrupts server-side generation and submits the text as a full turn.
     this.session.sendClientContent({
       turns: text,
       turnComplete: true,
