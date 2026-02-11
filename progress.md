@@ -735,3 +735,346 @@ app/src/main/java/com/shubharthak/apsaradark/
 ├── ui/navigation/Navigation.kt       — ViewModel hoisted to Activity scope
 └── ui/screens/HomeScreen.kt          — Accept ViewModel param, notification permission
 ```
+
+---
+
+## v3.1.0 — Notification Actions & GoAway Reconnect Fix (Feb 9–10, 2026)
+
+### What was done
+
+- **Notification mute/end actions**: Foreground notification now has **Mute/Unmute** and **End Session** action buttons, plus a live speaker animation icon (changes when Apsara is speaking vs. listening).
+- **Simplified notification**: Reduced notification complexity — removed redundant channels and consolidated into a single clean notification.
+- **GoAway reconnect infinite loop fix**: Fixed a critical bug where GoAway → reconnect → immediate GoAway would loop forever. Added `suppressDisconnect` flag during reconnection to prevent intermediate disconnect events from killing the session, and added loop-guard logic.
+- **GoAway reconnect stability**: Suppress intermediate disconnect messages during GoAway → reconnect cycle so the user doesn't see a disconnect → reconnect flicker.
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── live/LiveSessionService.kt        — Mute/End actions, speaker animation icon
+├── live/LiveSessionViewModel.kt      — GoAway reconnect loop guard
+└── live/LiveWebSocketClient.kt       — suppressDisconnect during GoAway
+
+backend/src/
+├── ws-handler.js                     — GoAway reconnect guard
+└── gemini-live-session.js            — Suppress intermediate disconnect
+```
+
+---
+
+## v3.2.0 — Live Video Camera Preview (Feb 10, 2026)
+
+### What was done
+
+- **Live video camera preview**: Full CameraX-based camera preview during live mode:
+  - Tap-to-focus (auto-resets after 3s)
+  - Pinch-to-zoom (smooth gesture detection)
+  - Flash toggle (on/off)
+  - Camera flip (front ↔ rear)
+  - Minimize / PiP-style mode (camera shrinks to small floating window)
+  - JPEG frames extracted from camera and streamed to Gemini via WebSocket (`video` message type)
+
+- **Media resolution setting**: Added `mediaResolution` config to `LiveSettingsManager` — controls the quality/size of video frames sent to Gemini (LOW, MEDIUM, HIGH).
+
+- **Camera annotation drawing overlay**: Pen-based drawing overlay on top of camera preview — user can annotate what the camera sees:
+  - Draw freehand annotations on camera feed
+  - Icon-only draw toolbar (pen, clear)
+  - Draw/clear buttons positioned outside camera gesture area for reliable tapping
+
+### New files
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/components/CameraPreview.kt     — CameraX preview with gesture controls
+├── ui/components/DrawingOverlay.kt    — Pen-based annotation overlay
+```
+
+### Files changed
+
+```
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/LiveSettingsManager.kt        — mediaResolution setting
+├── live/LiveWebSocketClient.kt        — Video frame sending
+├── live/LiveSessionViewModel.kt       — Camera state management
+└── ui/screens/HomeScreen.kt           — Camera preview integration, draw toolbar
+```
+
+---
+
+## v3.3.0 — Markdown Rendering (Attempted & Reverted) (Feb 10, 2026)
+
+### What was done
+
+- **Markdown rendering for output transcription**: Added rich markdown rendering for Apsara's output (bold, italic, headers, code blocks, lists).
+- **Deferred markdown rendering**: Performance optimization — renders plain text during streaming, then formats to markdown after 1s idle to avoid jank.
+- **Reverted**: Markdown rendering caused visual inconsistencies and performance issues with real-time streaming. Reverted entirely back to plain text output.
+
+### Lesson learned
+
+Real-time streaming text is incompatible with complex markdown rendering because:
+1. Partial markdown tokens (e.g., `**bold` without closing `**`) cause visual glitches
+2. Re-rendering annotated strings on every chunk is expensive
+3. Deferred rendering creates jarring visual jumps
+
+---
+
+## v4.0.0 — Interactions API & Canvas Plugin (Feb 10, 2026)
+
+### What was done
+
+#### Backend: Interactions API
+- **New subsystem**: `/backend/src/interactions/` — a separate Gemini text/chat API (non-live) for tool operations that need full Gemini reasoning:
+  - `interactions-service.js` — Manages Gemini chat sessions with tool calling support
+  - `interactions-tools.js` — Tool declarations for the Interactions API (get_current_time, get_weather, canvas tools, code tools)
+  - `interactions-router.js` — Express routes for `/interactions/*`
+  - `interactions-ws-handler.js` — WebSocket handler for streaming interaction responses
+  - `interactions-config.js` — Configuration for Interactions API
+- **Architecture**: Live API → detects tool call → delegates to Interactions API for complex operations → streams results back to client.
+
+#### Backend: Canvas Plugin
+- **Apsara Canvas**: AI-generated web applications served in-app:
+  - `canvas-service.js` — Uses Gemini to generate full HTML/CSS/JS web apps from prompts, with auto-validation and error fixing
+  - `canvas-store.js` — In-memory store for canvas projects (code, metadata, versions)
+  - `canvas-router.js` — Express routes for serving canvas pages (`/canvas/:id`)
+  - Tools: `apsara_canvas` (create), `list_canvases`, `get_canvas_detail`, `edit_canvas`
+
+#### Android: Canvas Integration
+- **My Canvas screen**: Lists all generated canvases with title, timestamp, and preview
+- **Canvas viewer**: Full-screen WebView rendering of generated web apps
+- **Canvas detail viewer**: Tabbed interface with Code, Prompt, Log, and Info tabs
+- **Mobile-first rendering**: Canvas HTML is injected with responsive viewport meta tags
+- **In-app notifications**: Toast/snackbar for canvas creation progress
+
+#### WebSocket Fixes
+- **Heartbeat error fix**: Replaced WebSocket protocol-level pings with application-level JSON `ping`/`pong` messages to prevent `Control frames must be final` errors
+- **noServer WebSocket routing**: Fixed root cause of WebSocket frame corruption by using `noServer` mode with manual upgrade handling in Express
+- **Caddy proxy fix**: Added `flush_interval -1` to Caddy reverse_proxy config for proper WebSocket streaming
+
+### New files
+
+```
+backend/src/
+├── canvas/
+│   ├── index.js              — Canvas module exports
+│   ├── canvas-service.js     — AI code generation + validation
+│   ├── canvas-store.js       — In-memory project store
+│   └── canvas-router.js      — Express routes for serving canvases
+├── interactions/
+│   ├── index.js              — Interactions module exports
+│   ├── interactions-service.js  — Gemini chat session manager
+│   ├── interactions-tools.js    — Tool declarations
+│   ├── interactions-router.js   — Express routes
+│   ├── interactions-ws-handler.js — WS streaming handler
+│   └── interactions-config.js   — Config
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/screens/CanvasListScreen.kt     — My Canvas list
+├── ui/screens/CanvasViewerScreen.kt   — WebView renderer
+├── ui/screens/CanvasDetailScreen.kt   — Code/Prompt/Log/Info tabs
+```
+
+---
+
+## v4.1.0 — Canvas Detail & Edit Tools (Feb 10, 2026)
+
+### What was done
+
+- **Canvas detail viewer**: Full tabbed detail screen for each canvas:
+  - **Code tab**: Syntax-highlighted source code viewer
+  - **Prompt tab**: Original generation prompt
+  - **Log tab**: Generation/validation log history
+  - **Info tab**: Metadata (title, created date, version count, URL)
+
+- **Canvas edit tool**: `edit_canvas` Live API tool — Apsara can modify existing canvases based on user instructions:
+  - Extracts current canvas code from store
+  - Sends edit prompt to Gemini for modification
+  - Updates canvas in-place with new version
+  - **Title update**: Edit instructions now update the app title based on HTML `<title>` extraction
+
+- **Canvas list tool**: `list_canvases` — Apsara can enumerate all user's canvases
+- **Canvas detail tool**: `get_canvas_detail` — Apsara can retrieve full details of a canvas
+
+- **Plugin registration fix**: Fixed plugin tools not being registered correctly in Live API session configuration
+
+### Files changed
+
+```
+backend/src/
+├── tools.js                          — list_canvases, get_canvas_detail, edit_canvas tools
+├── canvas/canvas-service.js          — Edit flow, title extraction
+└── canvas/canvas-store.js            — Version history, update methods
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/screens/CanvasDetailScreen.kt  — Tabbed detail viewer
+├── ui/screens/CanvasListScreen.kt    — List with navigation
+├── ui/navigation/Navigation.kt       — Canvas detail routes
+└── data/MockData.kt                  — Canvas plugin card
+```
+
+---
+
+## v5.0.0 — Apsara Interpreter (Inline Code Execution) (Feb 10, 2026)
+
+### What was done
+
+- **Apsara Interpreter**: A full code execution environment accessible from live chat:
+  - `run_code` tool — Apsara writes and executes Python/JavaScript code in a sandboxed Docker-like environment on the backend
+  - Code runs in isolated sessions with shared state (variables persist across runs in the same session)
+  - Supports text output, image generation (matplotlib, PIL), and structured data
+  - Results streamed back to live chat in real-time
+
+- **Code execution cards in chat**: New `CodeExecutionCard` composable embedded in Apsara messages:
+  - Shows code being executed (syntax highlighted)
+  - Displays execution output (stdout, stderr)
+  - Shows generated images inline with zoom support
+  - Loading/completed status indicators
+
+- **My Code screen**: Lists all code execution sessions (analogous to My Canvas for canvases)
+- **Code session management**: `list_code_sessions`, `get_code_session` tools for Apsara to recall previous code work
+
+### New files
+
+```
+backend/src/interpreter/
+├── interpreter-service.js     — Code execution engine (Gemini-powered code gen + sandbox execution)
+├── interpreter-store.js       — Session store (code, outputs, metadata)
+└── interpreter-router.js      — Express routes for code images
+
+backend/src/images/
+├── image-store.js             — In-memory image store for generated visuals
+└── image-router.js            — Express routes for serving images
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/screens/MyCodeScreen.kt         — Code session list
+├── ui/screens/CodeDetailScreen.kt     — Code session detail viewer
+└── ui/components/CodeExecutionCard.kt — Inline code card in chat
+```
+
+---
+
+## v5.1.0 — Interpreter Improvements & Config Tabs (Feb 10, 2026)
+
+### What was done
+
+- **`edit_code` tool**: Apsara can now modify existing code sessions — edits update the same session instead of creating a new one:
+  - Preserves session context (variables, imports)
+  - Single matplotlib image per execution (replaces previous)
+  - Edit history tracked in session metadata
+
+- **Haptic feedback for tool calls**: Device vibrates when a tool call starts and completes (respects haptic feedback setting).
+
+- **Config tab**: Added a "Config" tab to both Canvas detail and MyCode detail screens — shows the generation config (model, temperature, tools used).
+
+- **Image deduplication**: Implemented and then removed size-based image dedup logic — decided redundant images are acceptable and dedup was causing more issues than it solved.
+
+- **UX cleanup**:
+  - Simplified CodeExecutionCard — removed redundant copy snackbar
+  - Show edit history in detail views
+  - Better image URL handling
+
+### Files changed
+
+```
+backend/src/
+├── tools.js                           — edit_code tool declaration + handler
+├── interpreter/interpreter-service.js — Edit flow, single image per execution
+├── interpreter/interpreter-store.js   — Edit history tracking
+└── images/image-store.js              — Image cleanup
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── ui/screens/CodeDetailScreen.kt     — Config tab, edit history
+├── ui/screens/CanvasDetailScreen.kt   — Config tab
+├── ui/components/CodeExecutionCard.kt — Simplified UX
+└── live/LiveSessionViewModel.kt       — Haptic for tool calls
+```
+
+---
+
+## v6.0.0 — URL Context Plugin, Settings UX & Text Interruption (Feb 11, 2026)
+
+### What was done
+
+#### URL Context Tool
+- **New `url_context` tool**: Apsara can fetch and analyze web page content during live conversations:
+  - User says "summarize this article" + provides URL → Apsara fetches content via Interactions API
+  - Uses Gemini to extract clean text, metadata (title, description, word count)
+  - Supports both sync (blocking) and async (non-blocking) execution modes
+  - Progress streaming: backend sends incremental status updates → Android shows progress in tool call cards (fetching → analyzing → complete)
+  - Tool call card in chat shows URL metadata (title, word count) on completion
+
+- **Backend**: `url_context` handler in `tools.js` delegates to Interactions API for intelligent content extraction. Sends `tool_progress` WebSocket messages during processing.
+- **Android**: `LiveWebSocketClient` parses `tool_progress` events, `LiveSessionViewModel` updates `EmbeddedToolCall` progress in real-time.
+
+#### Settings UX Refinement
+- **Haptic Feedback description highlight**: Tapping the "Make sure you turn on Output Transcriptions" description text now:
+  1. Auto-expands the Live Settings section
+  2. Smooth-scrolls to the Output Transcription toggle
+  3. Highlights it with an animated accent border that fades after 2 seconds
+  - Uses `LaunchedEffect` with scroll state and `Animatable` border alpha
+
+#### Canvas Edit Title Fix
+- **Title updates on edit**: When `edit_canvas` tool modifies a canvas, the title now updates based on:
+  1. The edit instruction (if descriptive enough)
+  2. HTML `<title>` tag extraction from the generated code
+
+#### Text Interruption
+- **Text messages now interrupt Apsara's speech**: Previously, sending a text message while Apsara was speaking in live mode did NOT interrupt her — only voice could interrupt. Now:
+  - **Backend**: `sendText()` first sends `realtimeInput.text` (which triggers Gemini's activity detection and interruption), then sends `clientContent` (which submits the actual text turn). This two-step approach mimics how voice input naturally triggers interruption.
+  - **Android**: `sendText()` proactively clears the audio playback queue before the server `interrupted` signal arrives, giving instant silence when the user types.
+
+### Protocol additions
+
+#### Server → Client messages (new)
+| Type | Fields | Description |
+|------|--------|-------------|
+| `tool_progress` | `id`, `name`, `progress` | Incremental tool execution progress |
+
+### Files changed
+
+```
+backend/src/
+├── tools.js                          — url_context tool declaration + handler
+├── ws-handler.js                     — tool_progress forwarding, sendText dual-send
+├── gemini-live-session.js            — sendText: realtimeInput.text + clientContent
+└── interactions/interactions-tools.js — url_context in Interactions API
+
+app/src/main/java/com/shubharthak/apsaradark/
+├── data/LiveSettingsManager.kt       — URL Context plugin entry
+├── data/MockData.kt                  — URL Context plugin card
+├── live/LiveWebSocketClient.kt       — tool_progress parsing, sendText audio clear
+├── live/LiveSessionViewModel.kt      — Tool progress updates, proactive audio clear
+├── ui/screens/HomeScreen.kt          — Tool progress in cards, URL metadata display
+├── ui/screens/PluginsScreen.kt       — URL Context toggle
+└── ui/screens/SettingsScreen.kt      — Haptic description clickable, scroll-to-highlight
+```
+
+---
+
+## Version Summary
+
+| Version | Codename | Date | Key Feature |
+|---------|----------|------|-------------|
+| v0.1.0 | Initial UI Shell | Feb 9 | Project setup, dark theme, navigation drawer |
+| v0.2.0 | UI Cleanup & Logo | Feb 9 | Logo integration, animated title, drawer cleanup |
+| v0.3.0 | Theme System | Feb 9 | 8 VS Code-inspired themes, settings screen |
+| v1.0.2 | UI Polish | Feb 9 | Home redesign, minimal chips, input bar polish |
+| v2.0.0 | Gemini Live API | Feb 9 | Full backend + Android live session integration |
+| v2.1.0 | Live Mode UX | Feb 10 | Plain text Apsara output, async transcription |
+| v2.2.0 | Thoughts UI | Feb 10 | Collapsible thoughts, config logging |
+| v2.3.0 | Thoughts Polish | Feb 10 | Thoughts above text, bold markdown, disconnect logging |
+| v2.4.0 | Per-Tool Async | Feb 10 | Per-tool async/sync, audio routing fix |
+| v2.5.0 | Tool Call UI | Feb 10 | Embedded tool call cards, plugin UI cleanup |
+| v2.6.0 | Amplitude Visualizer | Feb 9 | Real audio amplitude-driven visualizer |
+| v2.6.1 | Visualizer Fix | Feb 9 | User speech detection, amplitude boost |
+| v2.7.0 | Attachment Sheet | Feb 9 | Live mode bottom sheet (Camera, Photos, Files) |
+| v2.8.0 | Live Mode Only | Feb 9 | Removed normal mode, haptic feedback, session resumption |
+| v2.9.0 | Session Controls | Feb 9 | Resumption toggle, GoAway indicator |
+| v3.0.0 | Foreground Service | Feb 9 | Background persistence, wake/WiFi locks |
+| v3.1.0 | Notification Actions | Feb 9–10 | Mute/End in notification, GoAway fix |
+| v3.2.0 | Live Video Camera | Feb 10 | CameraX preview, annotations, media resolution |
+| v3.3.0 | Markdown (Reverted) | Feb 10 | Attempted markdown rendering, reverted |
+| v4.0.0 | Canvas & Interactions | Feb 10 | AI web app generation, Interactions API |
+| v4.1.0 | Canvas Detail & Edit | Feb 10 | Canvas viewer tabs, edit tool, list tool |
+| v5.0.0 | Apsara Interpreter | Feb 10 | Inline code execution in live chat |
+| v5.1.0 | Interpreter Polish | Feb 10 | edit_code, config tabs, haptic for tools |
+| v6.0.0 | URL Context & Interruption | Feb 11 | URL tool, Settings UX, text interruption |
