@@ -294,7 +294,7 @@ export function executeTool(name, args = {}) {
  * @param {Object} interactionConfig - Config overrides (model, temperature, etc.) from session
  * @returns {Promise<Object>} Result to send back to Gemini
  */
-export async function executeCanvasTool(args = {}, onProgress, interactionConfig = {}) {
+export async function executeCanvasTool(args = {}, onProgress, interactionConfig = {}, onChunk = null) {
   if (!canvasService) {
     return { success: false, error: 'Canvas service not initialized' };
   }
@@ -313,6 +313,7 @@ export async function executeCanvasTool(args = {}, onProgress, interactionConfig
         console.log(`[Canvas Tool] ${status}: ${message}`);
         onProgress?.(status, message);
       },
+      onChunk,
     });
 
     return {
@@ -341,7 +342,7 @@ export async function executeCanvasTool(args = {}, onProgress, interactionConfig
  * @param {Object} interactionConfig - Config overrides (model, temperature, etc.) from session
  * @returns {Promise<Object>} Result to send back to Gemini
  */
-export async function executeCanvasEditTool(args = {}, onProgress, interactionConfig = {}) {
+export async function executeCanvasEditTool(args = {}, onProgress, interactionConfig = {}, onChunk = null) {
   if (!canvasService) {
     return { success: false, error: 'Canvas service not initialized' };
   }
@@ -363,6 +364,7 @@ export async function executeCanvasEditTool(args = {}, onProgress, interactionCo
         console.log(`[Canvas Edit Tool] ${status}: ${message}`);
         onProgress?.(status, message);
       },
+      onChunk,
     });
 
     return {

@@ -82,7 +82,7 @@ export class CanvasService {
    * @param {Function} [params.onProgress] - Progress callback (status, message)
    * @returns {Promise<Object>} The canvas app
    */
-  async generateApp({ prompt, title, config = {}, onProgress }) {
+  async generateApp({ prompt, title, config = {}, onProgress, onChunk }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
 
     // Create the canvas entry
@@ -100,7 +100,9 @@ export class CanvasService {
 
     try {
       // Generate the initial code — capture interaction_id for multi-turn edits
-      const { html: generatedHtml, interactionId } = await this._generate(prompt, mergedConfig);
+      const { html: generatedHtml, interactionId } = onChunk
+        ? await this._generateStreaming(prompt, mergedConfig, null, onChunk)
+        : await this._generate(prompt, mergedConfig);
       let html = generatedHtml;
       canvasStore.update(canvas.id, { html, status: 'testing', attempts: 1, interaction_id: interactionId });
       console.log(`[Canvas] Stored interaction_id: ${interactionId} for canvas ${canvas.id}`);
@@ -167,7 +169,7 @@ export class CanvasService {
    * @param {Function} [params.onProgress] - Progress callback
    * @returns {Promise<Object>} The updated canvas app
    */
-  async editApp({ canvasId, instructions, config = {}, onProgress }) {
+  async editApp({ canvasId, instructions, config = {}, onProgress, onChunk }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
 
     // Get the existing canvas
@@ -221,13 +223,17 @@ export class CanvasService {
       if (isMultiTurn) {
         // Multi-turn: send only the edit instructions, Gemini has full context
         const editOnlyPrompt = `The user wants the following changes to the app:\n${instructions}\n\nApply the requested changes. Keep everything that works well, and only change/add/remove what's needed. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`;
-        const result = await this._generate(editOnlyPrompt, mergedConfig, previousInteractionId);
+        const result = onChunk
+          ? await this._generateStreaming(editOnlyPrompt, mergedConfig, previousInteractionId, onChunk)
+          : await this._generate(editOnlyPrompt, mergedConfig, previousInteractionId);
         html = result.html;
         interactionId = result.interactionId;
       } else {
         // Single-turn fallback: send full code + instructions (old behavior)
         const editPrompt = this._buildEditPrompt(existing, instructions);
-        const result = await this._generate(editPrompt, mergedConfig);
+        const result = onChunk
+          ? await this._generateStreaming(editPrompt, mergedConfig, null, onChunk)
+          : await this._generate(editPrompt, mergedConfig);
         html = result.html;
         interactionId = result.interactionId;
       }
@@ -367,6 +373,58 @@ export class CanvasService {
     html = this._cleanHtml(html);
 
     return { html, interactionId: interaction.id || null };
+  }
+
+  /**
+   * Generate HTML using streaming Interactions API.
+   * Same as _generate() but yields text deltas via onChunk callback.
+   * 
+   * @param {string} prompt - The generation prompt
+   * @param {Object} config - Generation config
+   * @param {string} [previousInteractionId] - Chain for multi-turn context
+   * @param {Function} [onChunk] - Called with each text delta string
+   * @returns {Promise<{html: string, interactionId: string}>}
+   */
+  async _generateStreaming(prompt, config, previousInteractionId = null, onChunk = null) {
+    console.log('[Canvas] Streaming generation for prompt:', prompt.substring(0, 100));
+    if (previousInteractionId) {
+      console.log('[Canvas] Chaining from previous interaction:', previousInteractionId);
+    }
+
+    const request = {
+      model: config.model || CANVAS_DEFAULTS.model,
+      input: prompt,
+      system_instruction: CANVAS_SYSTEM_INSTRUCTION,
+      stream: true,
+      generation_config: {
+        temperature: config.temperature ?? CANVAS_DEFAULTS.temperature,
+        max_output_tokens: config.max_output_tokens ?? CANVAS_DEFAULTS.max_output_tokens,
+        thinking_level: config.thinking_level ?? CANVAS_DEFAULTS.thinking_level,
+        thinking_summaries: config.thinking_summaries ?? CANVAS_DEFAULTS.thinking_summaries,
+      },
+    };
+
+    if (previousInteractionId) {
+      request.previous_interaction_id = previousInteractionId;
+    }
+
+    let html = '';
+    let interactionId = null;
+    const stream = await this.client.interactions.create(request);
+
+    for await (const chunk of stream) {
+      if (chunk.event_type === 'content.delta') {
+        if (chunk.delta?.type === 'text' && chunk.delta.text) {
+          html += chunk.delta.text;
+          onChunk?.(chunk.delta.text);
+        }
+      } else if (chunk.event_type === 'interaction.complete') {
+        interactionId = chunk.interaction?.id || null;
+      }
+    }
+
+    html = this._cleanHtml(html);
+    return { html, interactionId };
   }
 
   /**

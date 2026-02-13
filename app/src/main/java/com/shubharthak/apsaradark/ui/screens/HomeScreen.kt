@@ -836,6 +836,11 @@ private fun ApsaraBubble(
                             toolCall = tc,
                             palette = palette
                         )
+                    } else if (tc.name == "apsara_canvas" || tc.name == "edit_canvas") {
+                        CanvasStreamCard(
+                            toolCall = tc,
+                            palette = palette
+                        )
                     } else {
                         ToolCallCard(
                             toolName = tc.name,
@@ -984,6 +989,160 @@ private fun ToolCallCard(
                     .padding(12.dp)
             )
         }
+    }
+}
+
+// ─── Canvas Stream card — shown inline for apsara_canvas / edit_canvas tool calls ──
+
+@Composable
+private fun CanvasStreamCard(
+    toolCall: EmbeddedToolCall,
+    palette: ApsaraColorPalette
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
+    val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
+    val isEdit = toolCall.name == "edit_canvas"
+    val displayName = if (isEdit) "Canvas Edit" else "Canvas"
+    val htmlContent = toolCall.codeOutput ?: ""
+    val progressText = toolCall.codeBlock ?: ""
+    val hasHtml = htmlContent.length > 100
+    val charCount = htmlContent.length
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // Header row
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.surfaceContainer)
+                .border(
+                    width = 0.5.dp,
+                    color = if (isCompleted) palette.accent.copy(alpha = 0.3f)
+                            else palette.textTertiary.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable(enabled = hasHtml || isCompleted) {
+                    expanded = !expanded
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Status icon
+            if (isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = palette.accent,
+                    strokeWidth = 2.dp
+                )
+            } else if (isCompleted) {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = "Completed",
+                    tint = palette.accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // Title + subtitle
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary
+                )
+                Text(
+                    text = if (isRunning) {
+                        if (progressText.isNotBlank()) progressText
+                        else if (charCount > 0) "Generating… ${charCount.formatChars()}"
+                        else "Starting…"
+                    } else {
+                        buildString {
+                            append("Ready")
+                            if (charCount > 0) append(" · ${charCount.formatChars()}")
+                        }
+                    },
+                    fontSize = 11.sp,
+                    color = palette.textTertiary,
+                    maxLines = 1
+                )
+            }
+
+            // Expand hint
+            if (hasHtml || isCompleted) {
+                Text(
+                    text = if (expanded) "▾" else "▸",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary
+                )
+            }
+        }
+
+        // Expandable HTML preview
+        AnimatedVisibility(
+            visible = expanded && hasHtml,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = if (isRunning) "Live Preview" else "Preview",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.accent,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+                // WebView preview of accumulated/final HTML
+                val previewHtml = if (isRunning && !htmlContent.contains("</html>")) {
+                    // Wrap partial HTML in a minimal shell for preview
+                    if (htmlContent.contains("<html")) htmlContent + "\n</body></html>"
+                    else "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>$htmlContent</body></html>"
+                } else htmlContent
+
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        android.webkit.WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        }
+                    },
+                    update = { webView ->
+                        webView.loadDataWithBaseURL(
+                            null,
+                            previewHtml,
+                            "text/html",
+                            "UTF-8",
+                            null
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 400.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                )
+            }
+        }
+    }
+}
+
+/** Format character count for display (e.g., "12.3k chars") */
+private fun Int.formatChars(): String {
+    return when {
+        this >= 1000 -> "${String.format("%.1f", this / 1000.0)}k chars"
+        else -> "$this chars"
     }
 }
 

@@ -192,10 +192,16 @@ export function handleWebSocket(ws, apiKey) {
                   result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                 } else if (fc.name === 'edit_canvas') {
                   const iConfig = geminiSession?.config?.interactionConfig || {};
-                  result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);
+                  const chunkCb = (delta) => {
+                    send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
+                  };
+                  result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb);
                 } else {
                   const iConfig = geminiSession?.config?.interactionConfig || {};
-                  result = await executeCanvasTool(fc.args || {}, progressCb, iConfig);
+                  const chunkCb = (delta) => {
+                    send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
+                  };
+                  result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb);
                 }
                 console.log(`[WS] [SYNC-LONG] Tool result (${fc.name}):`, JSON.stringify(result));
                 const response = { id: fc.id, name: fc.name, response: result };
@@ -244,10 +250,16 @@ export function handleWebSocket(ws, apiKey) {
                     result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                   } else if (fc.name === 'edit_canvas') {
                     const iConfig = geminiSession?.config?.interactionConfig || {};
-                    result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig);
+                    const chunkCb = (delta) => {
+                      send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
+                    };
+                    result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb);
                   } else {
                     const iConfig = geminiSession?.config?.interactionConfig || {};
-                    result = await executeCanvasTool(fc.args || {}, progressCb, iConfig);
+                    const chunkCb = (delta) => {
+                      send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
+                    };
+                    result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb);
                   }
                 } else {
                   result = executeTool(fc.name, fc.args || {});

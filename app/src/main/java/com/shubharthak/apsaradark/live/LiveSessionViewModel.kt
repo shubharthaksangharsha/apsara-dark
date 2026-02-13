@@ -51,7 +51,10 @@ data class EmbeddedToolCall(
     // Interpreter-specific: code and output shown inline as collapsible sections
     val codeBlock: String? = null,
     val codeOutput: String? = null,
-    val codeImages: List<CodeImageInfo> = emptyList()
+    val codeImages: List<CodeImageInfo> = emptyList(),
+    // Canvas-specific: streaming HTML and final render URL
+    val canvasId: String? = null,
+    val canvasRenderUrl: String? = null
 )
 
 /**
@@ -476,13 +479,26 @@ class LiveSessionViewModel(
                                 output = (metaLines.toString() + "\n" + (text ?: "")).trim().ifEmpty { null }
                             } catch (_: Exception) { }
                         }
+                        // Extract canvas_id and render_url for canvas tools
+                        var extractedCanvasId: String? = null
+                        var extractedCanvasRenderUrl: String? = null
+                        if (matchingResult.name == "apsara_canvas" || matchingResult.name == "edit_canvas") {
+                            try {
+                                val json = org.json.JSONObject(matchingResult.result)
+                                val resp = if (json.has("response")) json.getJSONObject("response") else json
+                                extractedCanvasId = resp.optString("canvas_id", "").ifEmpty { null }
+                                extractedCanvasRenderUrl = resp.optString("render_url", "").ifEmpty { null }
+                            } catch (_: Exception) { }
+                        }
                         tc.copy(
                             status = LiveMessage.ToolStatus.COMPLETED,
                             result = matchingResult.result,
                             mode = matchingResult.mode,
                             codeBlock = tc.codeBlock ?: code,
                             codeOutput = tc.codeOutput ?: output,
-                            codeImages = tc.codeImages.ifEmpty { imgs }
+                            codeImages = tc.codeImages.ifEmpty { imgs },
+                            canvasId = tc.canvasId ?: extractedCanvasId,
+                            canvasRenderUrl = tc.canvasRenderUrl ?: extractedCanvasRenderUrl
                         )
                     } else tc
                 }
@@ -547,17 +563,61 @@ class LiveSessionViewModel(
             }
         }.launchIn(viewModelScope)
 
-        // Canvas progress — track canvas generation and emit notification when ready
+        // Canvas progress — track canvas generation and update tool call + emit notification when ready
         wsClient.canvasProgress.onEach { event ->
             Log.d(TAG, "Canvas progress: status=${event.status}, message=${event.message}")
+            // Update the matching canvas tool call's status text in messages
+            val canvasTools = setOf("apsara_canvas", "edit_canvas")
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.id == event.toolCallId && tc.name in canvasTools }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.id == event.toolCallId && tc.name in canvasTools && tc.status == LiveMessage.ToolStatus.RUNNING) {
+                        // Use codeBlock field to store the progress status text
+                        tc.copy(codeBlock = event.message)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            // Also update pending buffer
+            val pendingIdx = pendingToolCalls.indexOfFirst { it.id == event.toolCallId && it.name in canvasTools }
+            if (pendingIdx >= 0 && pendingToolCalls[pendingIdx].status == LiveMessage.ToolStatus.RUNNING) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(codeBlock = event.message)
+            }
             when (event.status) {
                 "ready" -> {
-                    // Canvas app is ready — emit notification
                     _canvasNotification.tryEmit(CanvasNotification(event.message, "ready"))
                 }
                 "error" -> {
                     _canvasNotification.tryEmit(CanvasNotification(event.message, "error"))
                 }
+            }
+        }.launchIn(viewModelScope)
+
+        // Canvas HTML delta — accumulate streaming HTML into tool call's codeOutput
+        wsClient.canvasHtmlDelta.onEach { event ->
+            val canvasTools = setOf("apsara_canvas", "edit_canvas")
+            // Update in messages
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.id == event.toolCallId && tc.name in canvasTools }
+            }
+            if (idx >= 0) {
+                val updatedCalls = messages[idx].toolCalls.map { tc ->
+                    if (tc.id == event.toolCallId && tc.name in canvasTools) {
+                        tc.copy(codeOutput = (tc.codeOutput ?: "") + event.delta)
+                    } else tc
+                }
+                messages[idx] = messages[idx].copy(toolCalls = updatedCalls)
+            }
+            // Also update pending buffer
+            val pendingIdx = pendingToolCalls.indexOfFirst { it.id == event.toolCallId && it.name in canvasTools }
+            if (pendingIdx >= 0) {
+                pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
+                    codeOutput = (pendingToolCalls[pendingIdx].codeOutput ?: "") + event.delta
+                )
             }
         }.launchIn(viewModelScope)
 
