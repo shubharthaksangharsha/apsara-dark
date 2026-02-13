@@ -1000,8 +1000,12 @@ private fun CanvasStreamCard(
                         }
                     },
                     fontSize = 11.sp,
+                    fontStyle = if (isRunning && progressText.isNotBlank() && charCount == 0)
+                        androidx.compose.ui.text.font.FontStyle.Italic
+                    else null,
                     color = palette.textTertiary,
-                    maxLines = 1
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 

@@ -83,9 +83,11 @@ export class CanvasService {
    * @param {string} [params.title] - App title
    * @param {Object} [params.config] - Override default config
    * @param {Function} [params.onProgress] - Progress callback (status, message)
+   * @param {Function} [params.onThought] - Thought summary callback (thought text)
+   * @param {Function} [params.onToolStatus] - Tool execution status callback (status, toolType)
    * @returns {Promise<Object>} The canvas app
    */
-  async generateApp({ prompt, title, config = {}, onProgress, onChunk }) {
+  async generateApp({ prompt, title, config = {}, onProgress, onChunk, onThought, onToolStatus }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
 
     // Create the canvas entry
@@ -104,7 +106,7 @@ export class CanvasService {
     try {
       // Generate the initial code — capture interaction_id for multi-turn edits
       const { html: generatedHtml, interactionId } = onChunk
-        ? await this._generateStreaming(prompt, mergedConfig, null, onChunk)
+        ? await this._generateStreaming(prompt, mergedConfig, null, onChunk, onThought, onToolStatus)
         : await this._generate(prompt, mergedConfig);
       let html = generatedHtml;
       canvasStore.update(canvas.id, { html, status: 'testing', attempts: 1, interaction_id: interactionId });
@@ -170,9 +172,11 @@ export class CanvasService {
    * @param {string} params.instructions - What to change/improve
    * @param {Object} [params.config] - Override default config
    * @param {Function} [params.onProgress] - Progress callback
+   * @param {Function} [params.onThought] - Thought summary callback
+   * @param {Function} [params.onToolStatus] - Tool execution status callback
    * @returns {Promise<Object>} The updated canvas app
    */
-  async editApp({ canvasId, instructions, config = {}, onProgress, onChunk }) {
+  async editApp({ canvasId, instructions, config = {}, onProgress, onChunk, onThought, onToolStatus }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
 
     // Get the existing canvas
@@ -227,7 +231,7 @@ export class CanvasService {
         // Multi-turn: send only the edit instructions, Gemini has full context
         const editOnlyPrompt = `The user wants the following changes to the app:\n${instructions}\n\nApply the requested changes. Keep everything that works well, and only change/add/remove what's needed. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`;
         const result = onChunk
-          ? await this._generateStreaming(editOnlyPrompt, mergedConfig, previousInteractionId, onChunk)
+          ? await this._generateStreaming(editOnlyPrompt, mergedConfig, previousInteractionId, onChunk, onThought, onToolStatus)
           : await this._generate(editOnlyPrompt, mergedConfig, previousInteractionId);
         html = result.html;
         interactionId = result.interactionId;
@@ -235,7 +239,7 @@ export class CanvasService {
         // Single-turn fallback: send full code + instructions (old behavior)
         const editPrompt = this._buildEditPrompt(existing, instructions);
         const result = onChunk
-          ? await this._generateStreaming(editPrompt, mergedConfig, null, onChunk)
+          ? await this._generateStreaming(editPrompt, mergedConfig, null, onChunk, onThought, onToolStatus)
           : await this._generate(editPrompt, mergedConfig);
         html = result.html;
         interactionId = result.interactionId;
@@ -387,9 +391,11 @@ export class CanvasService {
    * @param {Object} config - Generation config
    * @param {string} [previousInteractionId] - Chain for multi-turn context
    * @param {Function} [onChunk] - Called with each text delta string
+   * @param {Function} [onThought] - Called with each thought summary delta
+   * @param {Function} [onToolStatus] - Called with (status, toolType) for tool execution events
    * @returns {Promise<{html: string, interactionId: string}>}
    */
-  async _generateStreaming(prompt, config, previousInteractionId = null, onChunk = null) {
+  async _generateStreaming(prompt, config, previousInteractionId = null, onChunk = null, onThought = null, onToolStatus = null) {
     console.log('[Canvas] Streaming generation for prompt:', prompt.substring(0, 100));
     if (previousInteractionId) {
       console.log('[Canvas] Chaining from previous interaction:', previousInteractionId);
@@ -422,6 +428,21 @@ export class CanvasService {
         if (chunk.delta?.type === 'text' && chunk.delta.text) {
           html += chunk.delta.text;
           onChunk?.(chunk.delta.text);
+        } else if (chunk.delta?.type === 'thought' && chunk.delta.thought) {
+          onThought?.(chunk.delta.thought);
+        } else if (chunk.delta?.type === 'thought_summary' && chunk.delta.content?.text) {
+          onThought?.(chunk.delta.content.text);
+        }
+      } else if (chunk.event_type === 'content.start') {
+        // Track tool execution starts (url_context, etc.)
+        const contentType = chunk.content?.type;
+        if (contentType && contentType !== 'text' && contentType !== 'thought') {
+          onToolStatus?.('executing', contentType);
+        }
+      } else if (chunk.event_type === 'content.stop') {
+        const contentType = chunk.content?.type;
+        if (contentType && contentType !== 'text' && contentType !== 'thought') {
+          onToolStatus?.('executed', contentType);
         }
       } else if (chunk.event_type === 'interaction.complete') {
         interactionId = chunk.interaction?.id || null;

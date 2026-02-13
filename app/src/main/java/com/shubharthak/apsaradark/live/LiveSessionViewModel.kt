@@ -454,6 +454,18 @@ class LiveSessionViewModel(
                     } catch (_: Exception) { /* ignore parse errors */ }
                 }
 
+                // Extract canvasId for canvas tools (needed for no-code cards to navigate)
+                var pendingCanvasId: String? = null
+                var pendingCanvasRenderUrl: String? = null
+                if (result.name == "apsara_canvas" || result.name == "edit_canvas") {
+                    try {
+                        val json = org.json.JSONObject(result.result)
+                        val resp = if (json.has("response")) json.getJSONObject("response") else json
+                        pendingCanvasId = resp.optString("canvas_id", "").ifEmpty { null }
+                        pendingCanvasRenderUrl = resp.optString("render_url", "").ifEmpty { null }
+                    } catch (_: Exception) { }
+                }
+
                 // Update in pending buffer
                 val pendingIdx = pendingToolCalls.indexOfFirst { it.id == result.id }
                 if (pendingIdx >= 0) {
@@ -463,7 +475,9 @@ class LiveSessionViewModel(
                         mode = result.mode,
                         codeBlock = pendingToolCalls[pendingIdx].codeBlock ?: extractedCode,
                         codeOutput = pendingToolCalls[pendingIdx].codeOutput ?: extractedOutput,
-                        codeImages = pendingToolCalls[pendingIdx].codeImages.ifEmpty { extractedImages }
+                        codeImages = pendingToolCalls[pendingIdx].codeImages.ifEmpty { extractedImages },
+                        canvasId = pendingToolCalls[pendingIdx].canvasId ?: pendingCanvasId,
+                        canvasRenderUrl = pendingToolCalls[pendingIdx].canvasRenderUrl ?: pendingCanvasRenderUrl
                     )
                     // Haptic: pulse on completion
                     vibrateOnce(120L, 220)

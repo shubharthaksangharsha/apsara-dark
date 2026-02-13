@@ -453,6 +453,27 @@ Refined Canvas user experience — version-aware code navigation, simplified str
 
 ---
 
+### v1.0.0 — Canvas UX Refinements (Feb 14)
+
+#### CanvasStreamCard Navigation Fix
+- Fixed pending buffer missing `canvasId` extraction for canvas tools — no-code cards now navigate properly
+- Added `canvasId` and `canvasRenderUrl` extraction to `pendingToolCalls` update path in `LiveSessionViewModel.kt`
+
+#### Stream Thought Summaries + Tool Call Status
+- Backend: `_generateStreaming` now captures thought/thought_summary deltas and tool execution events from Interactions API
+- `ws-handler.js`: Accumulated thought text sent as `canvas_progress` messages with 'thinking' status; tool calls sent with 'tool_call' status
+- Android: `CanvasStreamCard` subtitle shows thought summaries (italic, 2 lines) and tool call status during generation
+
+| File | Changes |
+|------|---------|
+| `LiveSessionViewModel.kt` | `canvasId`/`canvasRenderUrl` extraction in pending buffer path |
+| `canvas-service.js` | `_generateStreaming` emits thought/tool events; `generateApp`/`editApp` thread callbacks |
+| `tools.js` | `executeCanvasTool`/`executeCanvasEditTool` accept `onThought`/`onToolStatus` |
+| `ws-handler.js` | Accumulated thought text + tool status callbacks in sync/async paths |
+| `HomeScreen.kt` | `CanvasStreamCard` subtitle: italic thoughts, 2-line maxLines, ellipsis overflow |
+
+---
+
 ## Version Summary
 
 | Version | Milestone | Date | Key Feature |

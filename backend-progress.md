@@ -410,6 +410,20 @@ Interaction settings now support per-tool configuration — each plugin (Canvas,
 
 ---
 
+### v1.0.0 — Canvas Thought + Tool Streaming (Feb 14)
+
+#### Thought Summaries Streaming
+- **`canvas-service.js`**: `_generateStreaming` now handles `thought`, `thought_summary` delta types and `content.start`/`content.stop` events for tool execution tracking.
+- Added `onThought` and `onToolStatus` callback parameters to `_generateStreaming`, `generateApp`, and `editApp`.
+
+#### Tool Execution Status
+- **`tools.js`**: `executeCanvasTool` and `executeCanvasEditTool` accept and forward `onThought`/`onToolStatus` callbacks.
+- **`ws-handler.js`**: Both sync and async paths create accumulated thought callbacks and tool status callbacks for canvas tools.
+  - Thoughts: sent as `canvas_progress` with `status: 'thinking'`, accumulated message text.
+  - Tool calls: sent as `canvas_progress` with `status: 'tool_call'`, descriptive messages.
+
+---
+
 ## Version Summary
 
 | Version | Milestone | Date | Key Feature |
