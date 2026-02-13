@@ -1,6 +1,10 @@
 package com.shubharthak.apsaradark.live
 
 import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -88,6 +92,49 @@ class LiveSessionViewModel(
 
     val wsClient = LiveWebSocketClient()
     val audioManager = LiveAudioManager(context)
+
+    // ─── Haptic feedback for tool calls (background-safe) ─────────
+    private val vibrator: Vibrator? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    } catch (_: Exception) { null }
+    private var syncPulseJob: Job? = null
+
+    private fun vibrateOnce(durationMs: Long, intensity: Int) {
+        if (vibrator == null || !vibrator.hasVibrator()) return
+        // Check haptic setting
+        if (!liveSettings.hapticFeedback) return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, intensity))
+            } else {
+                @Suppress("DEPRECATION") vibrator.vibrate(durationMs)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun startSyncPulse() {
+        if (syncPulseJob?.isActive == true) return
+        syncPulseJob = viewModelScope.launch {
+            while (true) {
+                vibrateOnce(50L, 120)  // dot
+                delay(150L)
+                vibrateOnce(50L, 120)  // dot
+                delay(150L)
+                vibrateOnce(180L, 180) // hold
+                delay(480L)
+            }
+        }
+    }
+
+    private fun stopSyncPulse() {
+        syncPulseJob?.cancel()
+        syncPulseJob = null
+    }
 
     var liveState by mutableStateOf(LiveState.IDLE)
         private set
@@ -331,6 +378,12 @@ class LiveSessionViewModel(
                         mode = if (isAsync) "async" else "sync"
                     )
                 )
+                // Haptic: pulse on tool call start
+                if (isAsync) {
+                    vibrateOnce(80L, 180) // single pulse for async start
+                } else {
+                    startSyncPulse() // continuous for sync
+                }
             }
             // Update the current streaming Apsara message with the new tool calls,
             // or create a placeholder Apsara message to hold them
@@ -412,6 +465,8 @@ class LiveSessionViewModel(
                         codeOutput = pendingToolCalls[pendingIdx].codeOutput ?: extractedOutput,
                         codeImages = pendingToolCalls[pendingIdx].codeImages.ifEmpty { extractedImages }
                     )
+                    // Haptic: pulse on completion
+                    vibrateOnce(120L, 220)
                 } else {
                     // Wasn't in pending — add it
                     pendingToolCalls.add(
@@ -504,6 +559,11 @@ class LiveSessionViewModel(
                 }
                 messages[lastApsaraIdx] = messages[lastApsaraIdx].copy(toolCalls = updatedCalls)
             }
+            // Stop sync pulse if no more sync tools are running
+            val anySyncRunning = pendingToolCalls.any {
+                it.mode != "async" && it.status == LiveMessage.ToolStatus.RUNNING
+            }
+            if (!anySyncRunning) stopSyncPulse()
         }.launchIn(viewModelScope)
 
         // Errors

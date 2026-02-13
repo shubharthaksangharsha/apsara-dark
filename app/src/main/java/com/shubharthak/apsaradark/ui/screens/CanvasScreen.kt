@@ -27,6 +27,10 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -496,6 +500,45 @@ private fun CanvasViewer(
     onViewCode: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var showVersionSheet by remember { mutableStateOf(false) }
+    var viewingVersion by remember { mutableStateOf<Int?>(null) }
+    // Keep a reference to the WebView to update URL on version switch
+    var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
+
+    // Fetch version list for the bottom sheet
+    var versions by remember { mutableStateOf<List<CanvasVersion>>(emptyList()) }
+    LaunchedEffect(app.id) {
+        kotlinx.coroutines.Dispatchers.IO.let { dispatcher ->
+            kotlinx.coroutines.withContext(dispatcher) {
+                try {
+                    val url = java.net.URL("$BACKEND_BASE/api/canvas/${app.id}")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "GET"
+                    if (conn.responseCode == 200) {
+                        val body = conn.inputStream.bufferedReader().readText()
+                        val json = org.json.JSONObject(body)
+                        val appJson = json.optJSONObject("app") ?: return@withContext
+                        val versionsArr = appJson.optJSONArray("versions")
+                        val vList = mutableListOf<CanvasVersion>()
+                        if (versionsArr != null) {
+                            for (i in 0 until versionsArr.length()) {
+                                val v = versionsArr.getJSONObject(i)
+                                vList.add(
+                                    CanvasVersion(
+                                        version = v.optInt("version", 0),
+                                        title = v.optString("title", ""),
+                                        htmlLength = v.optInt("html_length", 0),
+                                        timestamp = v.optString("timestamp", "")
+                                    )
+                                )
+                            }
+                        }
+                        versions = vList
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     Scaffold(
         containerColor = palette.surface,
@@ -512,9 +555,11 @@ private fun CanvasViewer(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            "Apsara Canvas",
+                            if (viewingVersion != null) "Version $viewingVersion"
+                            else "Apsara Canvas",
                             fontSize = 11.sp,
-                            color = palette.textTertiary
+                            color = if (viewingVersion != null) palette.accent
+                                    else palette.textTertiary
                         )
                     }
                 },
@@ -529,6 +574,18 @@ private fun CanvasViewer(
                     }
                 },
                 actions = {
+                    // History — version switcher
+                    if (versions.isNotEmpty()) {
+                        IconButton(onClick = { showVersionSheet = true }) {
+                            Icon(
+                                Icons.Outlined.History,
+                                contentDescription = "Version history",
+                                tint = if (viewingVersion != null) palette.accent
+                                        else palette.textSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                     // View code
                     IconButton(onClick = onViewCode) {
                         Icon(
@@ -616,10 +673,124 @@ private fun CanvasViewer(
                         }
                         setBackgroundColor(android.graphics.Color.parseColor("#0D0D0D"))
                         loadUrl(app.renderUrl)
+                        webViewRef = this
+                    }
+                },
+                update = { webView ->
+                    // Load version-specific URL when version changes
+                    val targetUrl = if (viewingVersion != null) {
+                        "$BACKEND_BASE/api/canvas/${app.id}/render/$viewingVersion"
+                    } else {
+                        app.renderUrl
+                    }
+                    if (webView.url != targetUrl) {
+                        webView.loadUrl(targetUrl)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+    }
+
+    // ─── Version History Bottom Sheet ───
+    if (showVersionSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showVersionSheet = false },
+            containerColor = palette.surfaceContainer
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    "Version History",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.textPrimary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Current version
+                val isCurrent = viewingVersion == null
+                Surface(
+                    color = if (isCurrent) palette.accent.copy(alpha = 0.1f)
+                            else palette.surfaceContainerHighest,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clickable {
+                            viewingVersion = null
+                            showVersionSheet = false
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "v${versions.size + 1}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.accent,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(app.title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = palette.textPrimary, maxLines = 1)
+                            Text("Current version", fontSize = 11.sp, color = palette.accent)
+                        }
+                        if (isCurrent) {
+                            Icon(Icons.Outlined.CheckCircle, null, tint = palette.accent, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
+                // Previous versions
+                versions.reversed().forEach { ver ->
+                    val isSelected = viewingVersion == ver.version
+                    Surface(
+                        color = if (isSelected) palette.accent.copy(alpha = 0.1f)
+                                else palette.surfaceContainerHighest,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .clickable {
+                                viewingVersion = ver.version
+                                showVersionSheet = false
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "v${ver.version}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) palette.accent else palette.textSecondary,
+                                modifier = Modifier.padding(end = 12.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    ver.title.ifBlank { "Version ${ver.version}" },
+                                    fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                    color = palette.textPrimary, maxLines = 1
+                                )
+                                Text(
+                                    ver.htmlLength.formatFileSize(),
+                                    fontSize = 11.sp, color = palette.textTertiary
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(Icons.Outlined.CheckCircle, null, tint = palette.accent, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -642,6 +813,8 @@ private fun CanvasDetailViewer(
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Versions, 3=Log, 4=Config, 5=Info
+    // null = current version, otherwise the version number from versions list
+    var selectedVersion by remember { mutableStateOf<Int?>(null) }
 
     // Fetch detail from backend
     LaunchedEffect(app.id) {
@@ -697,6 +870,7 @@ private fun CanvasDetailViewer(
                             CanvasVersion(
                                 version = entry.optInt("version", 0),
                                 title = entry.optString("title", ""),
+                                html = if (entry.isNull("html")) null else entry.optString("html", ""),
                                 htmlLength = entry.optInt("html_length", 0),
                                 timestamp = entry.optString("timestamp", "")
                             )
@@ -886,11 +1060,39 @@ private fun CanvasDetailViewer(
                     }
                 }
             } else if (detail != null) {
+                // Show version indicator when viewing a previous version
+                if (selectedVersion != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(palette.accent.copy(alpha = 0.1f))
+                            .clickable { selectedVersion = null }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Viewing Version ${selectedVersion}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = palette.accent
+                        )
+                        Text(
+                            "✕ Back to current",
+                            fontSize = 11.sp,
+                            color = palette.accent.copy(alpha = 0.7f)
+                        )
+                    }
+                }
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedTab) {
-                        0 -> CodeTabContent(detail!!, palette)
-                        1 -> PromptTabContent(detail!!, palette)
-                        2 -> VersionsTabContent(detail!!, app, palette)
+                        0 -> CodeTabContent(detail!!, palette, selectedVersion)
+                        1 -> PromptTabContent(detail!!, palette, selectedVersion)
+                        2 -> VersionsTabContent(detail!!, app, palette, selectedVersion) { ver ->
+                            selectedVersion = if (ver == null) null else ver
+                            // Switch to Code tab to show the version's code
+                            if (ver != null) selectedTab = 0
+                        }
                         3 -> LogTabContent(detail!!, palette)
                         4 -> ConfigTabContent(detail!!, palette)
                         5 -> InfoTabContent(detail!!, palette)
@@ -909,8 +1111,11 @@ private fun CanvasDetailViewer(
  * Code tab — shows HTML source with syntax-styled mono font.
  */
 @Composable
-private fun CodeTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) {
-    val code = detail.html
+private fun CodeTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette, selectedVersion: Int? = null) {
+    // Show version-specific code or current code
+    val code = if (selectedVersion != null) {
+        detail.versions.find { it.version == selectedVersion }?.html ?: detail.html
+    } else detail.html
 
     if (code.isNullOrBlank()) {
         Box(
@@ -1036,9 +1241,12 @@ private fun colorForCodeLine(line: String, palette: ApsaraColorPalette): android
  * Prompt tab — shows original prompt and clean edit history.
  */
 @Composable
-private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) {
+private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette, selectedVersion: Int? = null) {
     val originalPrompt = detail.originalPrompt.ifBlank { detail.prompt }
-    val edits = detail.editHistory
+    // Show edits up to selected version, or all if current
+    val edits = if (selectedVersion != null) {
+        detail.editHistory.take(selectedVersion.coerceAtMost(detail.editHistory.size))
+    } else detail.editHistory
 
     if (originalPrompt.isBlank()) {
         Box(
@@ -1092,12 +1300,15 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                 Spacer(modifier = Modifier.height(12.dp))
 
                 edits.forEachIndexed { index, edit ->
+                    // Latest edit expanded by default, rest collapsed
+                    var editExpanded by remember { mutableStateOf(index == edits.size - 1) }
                     Surface(
                         color = palette.surfaceContainer,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp)
+                            .clickable { editExpanded = !editExpanded }
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -1105,7 +1316,10 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Box(
                                         modifier = Modifier
                                             .size(22.dp)
@@ -1127,22 +1341,38 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                                         fontWeight = FontWeight.Medium,
                                         color = palette.textSecondary
                                     )
+                                    if (edit.timestamp.isNotBlank()) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            formatTimestamp(edit.timestamp),
+                                            fontSize = 10.sp,
+                                            color = palette.textTertiary.copy(alpha = 0.6f)
+                                        )
+                                    }
                                 }
-                                if (edit.timestamp.isNotBlank()) {
+                                Icon(
+                                    if (editExpanded) Icons.Outlined.ExpandLess
+                                    else Icons.Outlined.ExpandMore,
+                                    contentDescription = if (editExpanded) "Collapse" else "Expand",
+                                    tint = palette.textTertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            AnimatedVisibility(
+                                visible = editExpanded,
+                                enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                            ) {
+                                Column {
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        formatTimestamp(edit.timestamp),
-                                        fontSize = 10.sp,
-                                        color = palette.textTertiary.copy(alpha = 0.6f)
+                                        text = edit.instructions,
+                                        fontSize = 14.sp,
+                                        color = palette.textPrimary,
+                                        lineHeight = 22.sp
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = edit.instructions,
-                                fontSize = 14.sp,
-                                color = palette.textPrimary,
-                                lineHeight = 22.sp
-                            )
                         }
                     }
                 }
@@ -1181,7 +1411,13 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
  * Versions tab — shows version history timeline.
  */
 @Composable
-private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette: ApsaraColorPalette) {
+private fun VersionsTabContent(
+    detail: CanvasAppDetail,
+    app: CanvasApp,
+    palette: ApsaraColorPalette,
+    selectedVersion: Int? = null,
+    onVersionSelected: (Int?) -> Unit = {}
+) {
     val versions = detail.versions
     val currentVersion = versions.size + 1
 
@@ -1215,16 +1451,18 @@ private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette:
                 .padding(20.dp)
         ) {
             // Current version card (highlighted)
+            val isCurrentSelected = selectedVersion == null
             Surface(
                 color = palette.accent.copy(alpha = 0.08f),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(
-                        width = 1.dp,
-                        color = palette.accent.copy(alpha = 0.3f),
+                        width = if (isCurrentSelected) 1.5.dp else 0.5.dp,
+                        color = palette.accent.copy(alpha = if (isCurrentSelected) 0.6f else 0.3f),
                         shape = RoundedCornerShape(12.dp)
                     )
+                    .clickable { onVersionSelected(null) }
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -1260,12 +1498,21 @@ private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette:
                             color = palette.accent
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(palette.accent)
-                    )
+                    if (isCurrentSelected) {
+                        Icon(
+                            Icons.Outlined.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = palette.accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(palette.accent)
+                        )
+                    }
                 }
             }
 
@@ -1298,12 +1545,22 @@ private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette:
 
             // Previous versions (newest first)
             versions.reversed().forEach { ver ->
+                val isSelected = selectedVersion == ver.version
                 Surface(
-                    color = palette.surfaceContainer,
+                    color = if (isSelected) palette.accent.copy(alpha = 0.08f)
+                            else palette.surfaceContainer,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
+                        .then(
+                            if (isSelected) Modifier.border(
+                                width = 1.dp,
+                                color = palette.accent.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) else Modifier
+                        )
+                        .clickable { onVersionSelected(ver.version) }
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
@@ -1313,14 +1570,17 @@ private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette:
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(palette.surfaceContainerHighest),
+                                .background(
+                                    if (isSelected) palette.accent.copy(alpha = 0.2f)
+                                    else palette.surfaceContainerHighest
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 "v${ver.version}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = palette.textSecondary
+                                color = if (isSelected) palette.accent else palette.textSecondary
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
@@ -1347,6 +1607,21 @@ private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette:
                                     )
                                 }
                             }
+                        }
+                        if (isSelected) {
+                            Icon(
+                                Icons.Outlined.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = palette.accent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Outlined.ChevronRight,
+                                contentDescription = "View",
+                                tint = palette.textTertiary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
                 }

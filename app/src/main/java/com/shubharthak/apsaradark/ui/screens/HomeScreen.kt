@@ -242,91 +242,8 @@ fun HomeScreen(
     }
 
     // ─── Haptic feedback for tool/function calls ──────────────────────
-    // Sync tools: continuous pulsing (dot-dot-dot) while running
-    // Async tools: single pulse on start, single pulse on completion
-    val currentMessages = liveViewModel.messages
-
-    // Collect all tool calls across all messages to detect status changes
-    val allToolCalls = remember(currentMessages.toList()) {
-        currentMessages.flatMap { it.toolCalls }
-    }
-    // Track which tool IDs we've already pulsed for start/completion (async)
-    val asyncPulsedStart = remember { mutableSetOf<String>() }
-    val asyncPulsedComplete = remember { mutableSetOf<String>() }
-
-    // Async tool haptic: single pulse on start, single pulse on completion
-    LaunchedEffect(allToolCalls.toList()) {
-        if (!hapticEnabled || vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
-        for (tc in allToolCalls) {
-            if (tc.mode == "async") {
-                // Pulse once when first seen (RUNNING)
-                if (tc.status == LiveMessage.ToolStatus.RUNNING && tc.id !in asyncPulsedStart) {
-                    asyncPulsedStart.add(tc.id)
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            vibrator.vibrate(VibrationEffect.createOneShot(80L, 180))
-                        } else {
-                            @Suppress("DEPRECATION") vibrator.vibrate(80L)
-                        }
-                    } catch (_: Exception) {}
-                }
-                // Pulse once when completed
-                if (tc.status == LiveMessage.ToolStatus.COMPLETED && tc.id !in asyncPulsedComplete) {
-                    asyncPulsedComplete.add(tc.id)
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            vibrator.vibrate(VibrationEffect.createOneShot(120L, 220))
-                        } else {
-                            @Suppress("DEPRECATION") vibrator.vibrate(120L)
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-        }
-    }
-
-    // Sync tool haptic: dot·dot·hold — dot·dot·hold pulsing while any sync tool is running
-    val hasSyncRunning = allToolCalls.any {
-        it.mode != "async" && it.status == LiveMessage.ToolStatus.RUNNING
-    }
-    LaunchedEffect(hasSyncRunning) {
-        if (!hapticEnabled || vibrator == null || !vibrator.hasVibrator()) return@LaunchedEffect
-        if (hasSyncRunning) {
-            // Pattern: dot(50ms) · pause(100ms) · dot(50ms) · pause(100ms) · hold(180ms) · pause(300ms)
-            // This creates a smooth "tap-tap-buzz" rhythm
-            while (true) {
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        // dot
-                        vibrator.vibrate(VibrationEffect.createOneShot(50L, 120))
-                    } else {
-                        @Suppress("DEPRECATION") vibrator.vibrate(50L)
-                    }
-                } catch (_: Exception) {}
-                kotlinx.coroutines.delay(150L) // 50ms vibrate + 100ms pause
-
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        // dot
-                        vibrator.vibrate(VibrationEffect.createOneShot(50L, 120))
-                    } else {
-                        @Suppress("DEPRECATION") vibrator.vibrate(50L)
-                    }
-                } catch (_: Exception) {}
-                kotlinx.coroutines.delay(150L) // 50ms vibrate + 100ms pause
-
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        // hold (longer, slightly stronger)
-                        vibrator.vibrate(VibrationEffect.createOneShot(180L, 180))
-                    } else {
-                        @Suppress("DEPRECATION") vibrator.vibrate(180L)
-                    }
-                } catch (_: Exception) {}
-                kotlinx.coroutines.delay(480L) // 180ms vibrate + 300ms pause before next cycle
-            }
-        }
-    }
+    // MOVED TO LiveSessionViewModel to support background haptics
+    // The ViewModel now triggers haptics directly based on tool state transitions.
 
     val isLiveActive = liveViewModel.liveState != LiveSessionViewModel.LiveState.IDLE
 
@@ -1000,6 +917,8 @@ private fun CanvasStreamCard(
     palette: ApsaraColorPalette
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // false = Code, true = Preview (only used after completion)
+    var showPreview by remember { mutableStateOf(true) }
 
     val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
     val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
@@ -1009,6 +928,11 @@ private fun CanvasStreamCard(
     val progressText = toolCall.codeBlock ?: ""
     val hasHtml = htmlContent.length > 100
     val charCount = htmlContent.length
+
+    // Auto-expand during streaming once we have content
+    LaunchedEffect(isRunning, hasHtml) {
+        if (isRunning && hasHtml && !expanded) expanded = true
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -1082,7 +1006,7 @@ private fun CanvasStreamCard(
             }
         }
 
-        // Expandable HTML preview
+        // Expandable content
         AnimatedVisibility(
             visible = expanded && hasHtml,
             enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
@@ -1094,45 +1018,125 @@ private fun CanvasStreamCard(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = if (isRunning) "Live Preview" else "Preview",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.accent,
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-                // WebView preview of accumulated/final HTML
-                val previewHtml = if (isRunning && !htmlContent.contains("</html>")) {
-                    // Wrap partial HTML in a minimal shell for preview
-                    if (htmlContent.contains("<html")) htmlContent + "\n</body></html>"
-                    else "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>$htmlContent</body></html>"
-                } else htmlContent
-
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { ctx ->
-                        android.webkit.WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        }
-                    },
-                    update = { webView ->
-                        webView.loadDataWithBaseURL(
-                            null,
-                            previewHtml,
-                            "text/html",
-                            "UTF-8",
-                            null
+                if (isRunning) {
+                    // ── Streaming: show live code ──
+                    Text(
+                        text = "Live Code",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.accent,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                    val scrollState = rememberScrollState()
+                    // Auto-scroll to bottom as new content arrives
+                    LaunchedEffect(charCount) {
+                        scrollState.animateScrollTo(scrollState.maxValue)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 300.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .verticalScroll(scrollState)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = htmlContent,
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = palette.textPrimary.copy(alpha = 0.85f),
+                            lineHeight = 15.sp
                         )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 200.dp, max = 400.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                )
+                    }
+                } else {
+                    // ── Completed: Code ⇔ Preview toggle ──
+                    Row(
+                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Code button
+                        Surface(
+                            color = if (!showPreview) palette.accent.copy(alpha = 0.15f)
+                                    else palette.surfaceContainer,
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.clickable { showPreview = false }
+                        ) {
+                            Text(
+                                "Code",
+                                fontSize = 11.sp,
+                                fontWeight = if (!showPreview) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (!showPreview) palette.accent else palette.textTertiary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                        // Preview button
+                        Surface(
+                            color = if (showPreview) palette.accent.copy(alpha = 0.15f)
+                                    else palette.surfaceContainer,
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.clickable { showPreview = true }
+                        ) {
+                            Text(
+                                "Preview",
+                                fontSize = 11.sp,
+                                fontWeight = if (showPreview) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (showPreview) palette.accent else palette.textTertiary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (showPreview) {
+                        // WebView preview of final HTML
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { ctx ->
+                                android.webkit.WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.useWideViewPort = true
+                                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                }
+                            },
+                            update = { webView ->
+                                webView.loadDataWithBaseURL(
+                                    null,
+                                    htmlContent,
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 200.dp, max = 400.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        )
+                    } else {
+                        // Code view (monospace)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 300.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.surface)
+                                .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .verticalScroll(rememberScrollState())
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = htmlContent,
+                                fontSize = 10.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = palette.textPrimary.copy(alpha = 0.85f),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     }

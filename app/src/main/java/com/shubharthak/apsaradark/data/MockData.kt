@@ -62,6 +62,7 @@ data class CanvasEditEntry(
 data class CanvasVersion(
     val version: Int,
     val title: String = "",
+    val html: String? = null,
     val htmlLength: Int = 0,
     val timestamp: String = ""
 )
