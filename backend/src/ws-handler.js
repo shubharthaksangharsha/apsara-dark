@@ -105,6 +105,7 @@ export function handleWebSocket(ws, apiKey) {
         send({ type: 'text', text });
       },
       onThought: ({ text }) => {
+        console.log(`[WS] 🧠 Thought received (${text ? text.length : 0} chars):`, text ? text.substring(0, 200) : '(empty)');
         send({ type: 'thought', text });
       },
       onInputTranscription: ({ text }) => {
@@ -166,9 +167,9 @@ export function handleWebSocket(ws, apiKey) {
               console.log(`[WS] [SYNC-LONG] Executing long-running tool: ${fc.name}`, JSON.stringify(fc.args || {}));
               const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress'
                 : fc.name === 'url_context' ? 'url_context_progress'
-                : 'canvas_progress';
+                  : 'canvas_progress';
               send({ type: progressType, tool_call_id: fc.id, status: 'running', message: `Processing...` });
-              
+
               try {
                 const progressCb = (status, message) => {
                   send({ type: progressType, tool_call_id: fc.id, status, message });
@@ -216,13 +217,13 @@ export function handleWebSocket(ws, apiKey) {
             Promise.all(
               asyncCalls.map(async (fc) => {
                 console.log(`[WS] [ASYNC] Executing tool: ${fc.name}`, JSON.stringify(fc.args || {}));
-                
+
                 let result;
                 if (isLongRunningTool(fc.name)) {
                   // Long-running async tool (e.g., canvas create/edit, interpreter, url_context)
                   const progressType = (fc.name === 'run_code' || fc.name === 'edit_code') ? 'interpreter_progress'
                     : fc.name === 'url_context' ? 'url_context_progress'
-                    : 'canvas_progress';
+                      : 'canvas_progress';
                   send({ type: progressType, tool_call_id: fc.id, status: 'running', message: 'Processing...' });
                   const progressCb = (status, message) => {
                     send({ type: progressType, tool_call_id: fc.id, status, message });
@@ -252,7 +253,7 @@ export function handleWebSocket(ws, apiKey) {
                 } else {
                   result = executeTool(fc.name, fc.args || {});
                 }
-                
+
                 console.log(`[WS] [ASYNC] Tool result (${fc.name}):`, JSON.stringify(result));
                 return {
                   id: fc.id,
@@ -334,7 +335,7 @@ export function handleWebSocket(ws, apiKey) {
     switch (msg.type) {
       case 'connect': {
         const sessionConfig = msg.config || {};
-        
+
         // Force AUDIO modality — TEXT not supported by native audio model
         if (sessionConfig.responseModalities) {
           sessionConfig.responseModalities = ['AUDIO'];
@@ -368,10 +369,10 @@ export function handleWebSocket(ws, apiKey) {
           console.log('[WS] Enabled tools:', sessionConfig.enabledTools, '→ declarations:', sessionConfig.functionDeclarations.map(t => t.name));
           delete sessionConfig.enabledTools; // Clean up — not a Gemini config field
         }
-        
+
         // Log the config received from client
         console.log('[WS] Client connect config:', JSON.stringify(sessionConfig, null, 2));
-        
+
         geminiSession = new GeminiLiveSession(apiKey, sessionConfig, createCallbacks());
         const success = await geminiSession.connect();
         if (!success) {
