@@ -423,7 +423,7 @@ fun HomeScreen(
                 )
             }
         },
-        gesturesEnabled = !isLiveActive, // Disable swipe gestures during live mode
+        gesturesEnabled = true, // Always allow swipe gesture, even during live mode
         scrimColor = palette.surface.copy(alpha = 0.6f)
     ) {
         Scaffold(

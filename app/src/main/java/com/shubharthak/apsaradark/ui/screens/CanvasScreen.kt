@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +43,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.shubharthak.apsaradark.data.CanvasApp
 import com.shubharthak.apsaradark.data.CanvasAppDetail
+import com.shubharthak.apsaradark.data.CanvasEditEntry
 import com.shubharthak.apsaradark.data.CanvasLogEntry
+import com.shubharthak.apsaradark.data.CanvasVersion
 import com.shubharthak.apsaradark.ui.theme.ApsaraColorPalette
 import com.shubharthak.apsaradark.ui.theme.LocalThemeManager
 import kotlinx.coroutines.Dispatchers
@@ -638,7 +641,7 @@ private fun CanvasDetailViewer(
     var detail by remember { mutableStateOf<CanvasAppDetail?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Log, 3=Config, 4=Info
+    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Versions, 3=Log, 4=Config, 5=Info
 
     // Fetch detail from backend
     LaunchedEffect(app.id) {
@@ -668,6 +671,39 @@ private fun CanvasDetailViewer(
                         )
                     }
                 }
+
+                // Parse edit history
+                val editHistoryArray = a.optJSONArray("edit_history")
+                val editEntries = mutableListOf<CanvasEditEntry>()
+                if (editHistoryArray != null) {
+                    for (i in 0 until editHistoryArray.length()) {
+                        val entry = editHistoryArray.getJSONObject(i)
+                        editEntries.add(
+                            CanvasEditEntry(
+                                instructions = entry.optString("instructions", ""),
+                                timestamp = entry.optString("timestamp", "")
+                            )
+                        )
+                    }
+                }
+
+                // Parse versions
+                val versionsArray = a.optJSONArray("versions")
+                val versionEntries = mutableListOf<CanvasVersion>()
+                if (versionsArray != null) {
+                    for (i in 0 until versionsArray.length()) {
+                        val entry = versionsArray.getJSONObject(i)
+                        versionEntries.add(
+                            CanvasVersion(
+                                version = entry.optInt("version", 0),
+                                title = entry.optString("title", ""),
+                                htmlLength = entry.optInt("html_length", 0),
+                                timestamp = entry.optString("timestamp", "")
+                            )
+                        )
+                    }
+                }
+
                 CanvasAppDetail(
                     id = a.getString("id"),
                     title = a.optString("title", ""),
@@ -683,6 +719,8 @@ private fun CanvasDetailViewer(
                     updatedAt = a.optString("updated_at", ""),
                     generationLog = logEntries,
                     editCount = a.optInt("edit_count", 0),
+                    editHistory = editEntries,
+                    versions = versionEntries,
                     configUsed = if (a.isNull("config_used")) null else {
                         val cfg = a.optJSONObject("config_used")
                         if (cfg != null) {
@@ -700,7 +738,7 @@ private fun CanvasDetailViewer(
         isLoading = false
     }
 
-    val tabTitles = listOf("Code", "Prompt", "Log", "Config", "Info")
+    val tabTitles = listOf("Code", "Prompt", "Versions", "Log", "Config", "Info")
 
     Scaffold(
         containerColor = palette.surface,
@@ -852,9 +890,10 @@ private fun CanvasDetailViewer(
                     when (selectedTab) {
                         0 -> CodeTabContent(detail!!, palette)
                         1 -> PromptTabContent(detail!!, palette)
-                        2 -> LogTabContent(detail!!, palette)
-                        3 -> ConfigTabContent(detail!!, palette)
-                        4 -> InfoTabContent(detail!!, palette)
+                        2 -> VersionsTabContent(detail!!, app, palette)
+                        3 -> LogTabContent(detail!!, palette)
+                        4 -> ConfigTabContent(detail!!, palette)
+                        5 -> InfoTabContent(detail!!, palette)
                     }
                 }
             }
@@ -994,15 +1033,14 @@ private fun colorForCodeLine(line: String, palette: ApsaraColorPalette): android
 }
 
 /**
- * Prompt tab — shows the original user prompt.
+ * Prompt tab — shows original prompt and clean edit history.
  */
 @Composable
 private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalette) {
-    val prompt = detail.prompt
-    val originalPrompt = detail.originalPrompt
-    val hasBeenEdited = detail.editCount > 0 && originalPrompt.isNotBlank() && originalPrompt != prompt
+    val originalPrompt = detail.originalPrompt.ifBlank { detail.prompt }
+    val edits = detail.editHistory
 
-    if (prompt.isBlank()) {
+    if (originalPrompt.isBlank()) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -1010,17 +1048,15 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
             Text("No prompt recorded", fontSize = 14.sp, color = palette.textTertiary)
         }
     } else {
-        var showOriginal by remember { mutableStateOf(false) }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
-            // Current prompt header
+            // Original prompt header
             Text(
-                if (hasBeenEdited) "Current Prompt (with edits)" else "Original Prompt",
+                "Original Prompt",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.textSecondary,
@@ -1035,7 +1071,7 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = prompt,
+                    text = originalPrompt,
                     fontSize = 14.sp,
                     color = palette.textPrimary,
                     lineHeight = 22.sp,
@@ -1043,48 +1079,71 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                 )
             }
 
-            // Show original prompt (collapsible) if edited
-            if (hasBeenEdited) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { showOriginal = !showOriginal }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (showOriginal) "▾ Original Prompt" else "▸ Original Prompt",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = palette.accent
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "(${detail.editCount} edit${if (detail.editCount > 1) "s" else ""} applied)",
-                        fontSize = 11.sp,
-                        color = palette.textTertiary
-                    )
-                }
-                AnimatedVisibility(
-                    visible = showOriginal,
-                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
-                ) {
+            // Edit history — each edit as a clean numbered card
+            if (edits.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    "Edit History",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.textSecondary,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                edits.forEachIndexed { index, edit ->
                     Surface(
-                        color = palette.surfaceContainer.copy(alpha = 0.7f),
+                        color = palette.surfaceContainer,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .padding(bottom = 8.dp)
                     ) {
-                        Text(
-                            text = originalPrompt,
-                            fontSize = 14.sp,
-                            color = palette.textSecondary,
-                            lineHeight = 22.sp,
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(palette.accent.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "${index + 1}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = palette.accent
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Edit ${index + 1}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.textSecondary
+                                    )
+                                }
+                                if (edit.timestamp.isNotBlank()) {
+                                    Text(
+                                        formatTimestamp(edit.timestamp),
+                                        fontSize = 10.sp,
+                                        color = palette.textTertiary.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = edit.instructions,
+                                fontSize = 14.sp,
+                                color = palette.textPrimary,
+                                lineHeight = 22.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1098,21 +1157,218 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
             ) {
                 DetailChip(
                     label = "Words",
-                    value = "${prompt.split("\\s+".toRegex()).size}",
+                    value = "${originalPrompt.split("\\s+".toRegex()).size}",
                     palette = palette
                 )
                 DetailChip(
                     label = "Characters",
-                    value = "${prompt.length}",
+                    value = "${originalPrompt.length}",
                     palette = palette
                 )
-                if (hasBeenEdited) {
+                if (edits.isNotEmpty()) {
                     DetailChip(
                         label = "Edits",
-                        value = "${detail.editCount}",
+                        value = "${edits.size}",
                         palette = palette
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Versions tab — shows version history timeline.
+ */
+@Composable
+private fun VersionsTabContent(detail: CanvasAppDetail, app: CanvasApp, palette: ApsaraColorPalette) {
+    val versions = detail.versions
+    val currentVersion = versions.size + 1
+
+    if (versions.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Outlined.History,
+                    contentDescription = null,
+                    tint = palette.textTertiary.copy(alpha = 0.4f),
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("No version history yet", fontSize = 14.sp, color = palette.textTertiary)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Versions are saved each time the canvas is edited",
+                    fontSize = 12.sp,
+                    color = palette.textTertiary.copy(alpha = 0.6f)
+                )
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp)
+        ) {
+            // Current version card (highlighted)
+            Surface(
+                color = palette.accent.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color = palette.accent.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.accent.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "v$currentVersion",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.accent
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            detail.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = palette.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "Current • ${detail.htmlLength.formatFileSize()}",
+                            fontSize = 11.sp,
+                            color = palette.accent
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(palette.accent)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Divider with label
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 0.5.dp,
+                    color = palette.textTertiary.copy(alpha = 0.15f)
+                )
+                Text(
+                    "  Previous Versions  ",
+                    fontSize = 10.sp,
+                    color = palette.textTertiary.copy(alpha = 0.5f),
+                    letterSpacing = 0.5.sp
+                )
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 0.5.dp,
+                    color = palette.textTertiary.copy(alpha = 0.15f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Previous versions (newest first)
+            versions.reversed().forEach { ver ->
+                Surface(
+                    color = palette.surfaceContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "v${ver.version}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.textSecondary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                ver.title.ifBlank { "Version ${ver.version}" },
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = palette.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row {
+                                Text(
+                                    ver.htmlLength.formatFileSize(),
+                                    fontSize = 11.sp,
+                                    color = palette.textTertiary
+                                )
+                                if (ver.timestamp.isNotBlank()) {
+                                    Text(
+                                        " • ${formatTimestamp(ver.timestamp)}",
+                                        fontSize = 11.sp,
+                                        color = palette.textTertiary.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Summary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DetailChip(
+                    label = "Total Versions",
+                    value = "$currentVersion",
+                    palette = palette
+                )
+                DetailChip(
+                    label = "Edits",
+                    value = "${detail.editHistory.size}",
+                    palette = palette
+                )
             }
         }
     }

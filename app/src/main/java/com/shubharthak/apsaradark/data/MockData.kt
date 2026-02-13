@@ -49,7 +49,21 @@ data class CanvasAppDetail(
     val updatedAt: String = "",
     val generationLog: List<CanvasLogEntry> = emptyList(),
     val editCount: Int = 0,
+    val editHistory: List<CanvasEditEntry> = emptyList(),
+    val versions: List<CanvasVersion> = emptyList(),
     val configUsed: Map<String, String>? = null
+)
+
+data class CanvasEditEntry(
+    val instructions: String,
+    val timestamp: String = ""
+)
+
+data class CanvasVersion(
+    val version: Int,
+    val title: String = "",
+    val htmlLength: Int = 0,
+    val timestamp: String = ""
 )
 
 data class CanvasLogEntry(

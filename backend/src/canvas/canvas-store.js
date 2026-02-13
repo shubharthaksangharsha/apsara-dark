@@ -34,6 +34,7 @@ class CanvasStore {
       config_used: null,               // Config used for generation/last edit (model, temperature, etc.)
       interaction_id: null,            // Interactions API ID — enables multi-turn edit sessions
       edit_history: [],                // Tracks each edit instruction for context
+      versions: [],                    // Version history — snapshots of HTML at each edit
       created_at: now,
       updated_at: now,
       // Generation log — tracks each step of the generation process
@@ -125,6 +126,7 @@ class CanvasStore {
       html_length: app.html ? app.html.length : 0,
       interaction_id: app.interaction_id || null,
       edit_history: app.edit_history || [],
+      versions: app.versions || [],
       created_at: app.created_at,
       updated_at: app.updated_at,
       generation_log: app.generation_log || [],

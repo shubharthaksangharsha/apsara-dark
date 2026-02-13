@@ -178,13 +178,22 @@ export class CanvasService {
 
     onProgress?.('generating', `Editing "${existing.title}"...`);
 
-    // Log the edit start — also update prompt to include edit instructions
-    const updatedPrompt = `${existing.prompt}\n\n[Edit: ${instructions}]`;
+    // ── Snapshot current state as a version before applying edits ──
+    const versions = existing.versions || [];
+    if (existing.html && existing.status === 'ready') {
+      versions.push({
+        version: versions.length + 1,
+        title: existing.title,
+        html: existing.html,
+        html_length: existing.html.length,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Generate a new title that reflects the edit instructions
     const newTitle = this._generateEditTitle(existing.title, instructions);
 
-    // Track edit history for context
+    // Track edit history for context (individual instructions, no [Edit:] in prompt)
     const editHistory = existing.edit_history || [];
     editHistory.push({
       instructions,
@@ -194,10 +203,11 @@ export class CanvasService {
 
     canvasStore.update(canvasId, {
       status: 'generating',
-      prompt: updatedPrompt,
+      // Keep prompt as original — don't append [Edit:] markers
       title: newTitle,
       config_used: mergedConfig,
       edit_history: editHistory,
+      versions,
     });
 
     // Determine if we can use multi-turn context
@@ -267,7 +277,7 @@ export class CanvasService {
         canvasStore.update(canvasId, { status: 'fixing', attempts: (existing.attempts || 0) + attempt });
         onProgress?.('fixing', `Fixing issues (attempt ${attempt}/${maxAttempts})...`);
 
-        const fixResult = await this._fix(html, errors, existing.prompt + '\n\nEdit: ' + instructions, mergedConfig, currentInteractionId);
+        const fixResult = await this._fix(html, errors, (existing.original_prompt || existing.prompt) + '\n\nEdit: ' + instructions, mergedConfig, currentInteractionId);
         html = fixResult.html;
         currentInteractionId = fixResult.interactionId || currentInteractionId;
         canvasStore.update(canvasId, { html, interaction_id: currentInteractionId });

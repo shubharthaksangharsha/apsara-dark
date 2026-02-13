@@ -154,6 +154,32 @@ export function createCanvasRouter(apiKey) {
     res.send(html);
   });
 
+  // ─── GET /api/canvas/:id/render/:version ──────────────────────────────────
+  // Serves a specific version's HTML for iframe/WebView embedding
+  router.get('/:id/render/:version', (req, res) => {
+    const app = canvasStore.get(req.params.id);
+    if (!app) {
+      return res.status(404).send('<html><body><h1>Canvas not found</h1></body></html>');
+    }
+    const versionNum = parseInt(req.params.version, 10);
+    const versions = app.versions || [];
+    const ver = versions.find(v => v.version === versionNum);
+    if (!ver || !ver.html) {
+      return res.status(404).send('<html><body><h1>Version not found</h1></body></html>');
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+    res.removeHeader('X-Frame-Options');
+    let html = ver.html;
+    if (html && !html.includes('name="viewport"') && !html.includes("name='viewport'")) {
+      html = html.replace(
+        /<head([^>]*)>/i,
+        `<head$1>\n<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`
+      );
+    }
+    res.send(html);
+  });
+
   // ─── DELETE /api/canvas/:id ───────────────────────────────────────────────
   router.delete('/:id', (req, res) => {
     const exists = canvasStore.get(req.params.id);
