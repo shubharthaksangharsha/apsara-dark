@@ -264,6 +264,11 @@ export class GeminiLiveSession {
       // Model turn — audio + text parts
       if (sc.modelTurn && sc.modelTurn.parts) {
         for (const part of sc.modelTurn.parts) {
+          // Debug: log part keys to find thought structure
+          if (part.text) {
+            console.log(`[GeminiLive] 📝 Part with text — keys: [${Object.keys(part).join(', ')}] | thought=${part.thought} | text preview: "${part.text.substring(0, 80)}"`);
+          }
+
           // Audio data
           if (part.inlineData && part.inlineData.data) {
             this.callbacks.onAudioData?.({
@@ -272,13 +277,11 @@ export class GeminiLiveSession {
             });
           }
 
-          // Text data
+          // Text data — check if this is a thought
           if (part.text) {
             if (part.thought) {
-              // Only forward thoughts if includeThoughts is enabled
-              if (this.config.includeThoughts) {
-                this.callbacks.onThought?.({ text: part.text });
-              }
+              // Thought part detected
+              this.callbacks.onThought?.({ text: part.text });
             } else {
               this.callbacks.onTextData?.({ text: part.text });
             }
@@ -294,6 +297,11 @@ export class GeminiLiveSession {
             this.callbacks.onCodeExecutionResult?.({ output: part.codeExecutionResult.output });
           }
         }
+      }
+
+      // Check for thought summaries outside modelTurn (alternative Gemini format)
+      if (sc.groundingMetadata || sc.thoughtSummary || sc.thoughtSummaries) {
+        console.log(`[GeminiLive] 🧠 Non-modelTurn thought fields — keys: [${Object.keys(sc).join(', ')}]`);
       }
 
       // Input transcription
