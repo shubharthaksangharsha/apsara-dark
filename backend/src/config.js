@@ -70,12 +70,11 @@ You are assisting Shubharthak with his day-to-day tasks, ideas, and conversation
   // Enable proactive audio (model decides when to respond)
   proactiveAudio: true,
 
-  // Thinking configuration — thinkingBudget guides the number of thinking tokens.
-  // When includeThoughts is ON and thinkingBudget is null → dynamic thinking (model decides).
-  // When includeThoughts is OFF → thinkingBudget is forced to 0 (thinking fully disabled).
-  thinkingBudget: null, // null = dynamic thinking (used when includeThoughts is true)
+  // Thinking — per docs: thinkingConfig: { thinkingBudget: 1024, includeThoughts: true }
+  // Both fields required. Budget of 0 disables thinking entirely.
+  thinkingBudget: 1024, // Default per docs example; 0 = off, -1 = dynamic
 
-  // Include thought summaries — when OFF, thinking is fully disabled (thinkingBudget: 0)
+  // Include thought summaries in responses (requires thinkingBudget > 0)
   includeThoughts: false,
 
   // Enable input audio transcription

@@ -91,23 +91,19 @@ export class GeminiLiveSession {
       config.proactivity = { proactiveAudio: true };
     }
 
-    // Thinking — native audio models don't support thinkingConfig.
-    // Only apply for non-native-audio models (e.g. gemini-2.5-flash, gemini-2.5-pro).
-    const isNativeAudioModel = (this.config.model || '').includes('native-audio');
-    if (isNativeAudioModel) {
-      console.log('[GeminiLive] Native audio model detected — thinkingConfig not supported, skipping');
-    } else if (this.config.includeThoughts) {
-      // Thoughts ON: use configured budget (or dynamic if null) + enable summaries
-      const thinkingConfig = { includeThoughts: true };
-      if (this.config.thinkingBudget !== null && this.config.thinkingBudget !== undefined) {
-        thinkingConfig.thinkingBudget = this.config.thinkingBudget;
-      }
-      config.thinkingConfig = thinkingConfig;
-      console.log('[GeminiLive] Thinking: ON |', JSON.stringify(config.thinkingConfig));
+    // Thinking — per docs, thinkingConfig needs BOTH thinkingBudget and includeThoughts.
+    // Docs example: thinkingConfig: { thinkingBudget: 1024, includeThoughts: true }
+    if (this.config.includeThoughts) {
+      const budget = (this.config.thinkingBudget !== null && this.config.thinkingBudget !== undefined)
+        ? this.config.thinkingBudget
+        : 1024; // Default budget when thoughts are enabled (per docs example)
+      config.thinkingConfig = {
+        thinkingBudget: budget,
+        includeThoughts: true,
+      };
     } else {
-      // Thoughts OFF: fully disable thinking by setting budget to 0
+      // Thoughts OFF: disable thinking entirely
       config.thinkingConfig = { thinkingBudget: 0 };
-      console.log('[GeminiLive] Thinking: OFF | thinkingBudget: 0');
     }
 
     // Input audio transcription — only for AUDIO modality (requires audio input)
