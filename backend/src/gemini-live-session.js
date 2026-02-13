@@ -105,6 +105,7 @@ export class GeminiLiveSession {
       // Thoughts OFF: fully disable thinking by setting budget to 0
       config.thinkingConfig = { thinkingBudget: 0 };
     }
+    console.log(`[GeminiLive] 🧠 Thinking: ${this.config.includeThoughts ? 'ON' : 'OFF'} | thinkingConfig:`, JSON.stringify(config.thinkingConfig));
 
     // Input audio transcription — only for AUDIO modality (requires audio input)
     if (isAudioModality && this.config.inputAudioTranscription) {
