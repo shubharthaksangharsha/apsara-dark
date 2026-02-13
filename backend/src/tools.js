@@ -36,7 +36,7 @@ export const TOOL_DECLARATIONS = [
   },
   {
     name: 'apsara_canvas',
-    description: 'Creates a web application using HTML, CSS, and JavaScript (or React). Use this when the user asks you to create, build, make, or design an app, website, game, tool, dashboard, calculator, or any interactive web application. Apsara Canvas will generate the full code, validate it, auto-fix any errors, and serve it. The app will appear in "My Canvas" for the user to view.',
+    description: 'Creates a web application using HTML, CSS, and JavaScript (or React). Use this when the user asks you to create, build, make, or design an app, website, game, tool, dashboard, calculator, or any interactive web application. Apsara Canvas will generate the full code, validate it, auto-fix any errors, and serve it. The app will appear in "My Canvas" for the user to view. IMPORTANT: Canvas has its own built-in URL Context tool — if the user references any URL (e.g., "create a portfolio like devshubh.me"), include the URL in the prompt and Canvas will automatically fetch and use the content. Do NOT call url_context separately before calling apsara_canvas.',
     parameters: {
       type: 'object',
       properties: {
@@ -77,7 +77,7 @@ export const TOOL_DECLARATIONS = [
   },
   {
     name: 'edit_canvas',
-    description: 'Edits and improves an existing canvas app. Reads the current code and metadata, then regenerates the app based on the edit instructions. Use this when the user asks to edit, update, improve, refine, fix, change, or modify an existing canvas app. You MUST call list_canvases first to get the canvas_id, then call this tool with the canvas_id and the edit instructions.',
+    description: 'Edits and improves an existing canvas app. Reads the current code and metadata, then regenerates the app based on the edit instructions. Use this when the user asks to edit, update, improve, refine, fix, change, or modify an existing canvas app. You MUST call list_canvases first to get the canvas_id, then call this tool with the canvas_id and the edit instructions. IMPORTANT: Canvas Edit has its own built-in URL Context tool — if the user references any URL in the edit instructions, include the URL in the instructions and Canvas will automatically fetch and use the content. Do NOT call url_context separately before calling edit_canvas.',
     parameters: {
       type: 'object',
       properties: {
@@ -154,7 +154,7 @@ export const TOOL_DECLARATIONS = [
   },
   {
     name: 'url_context',
-    description: 'Fetches and analyzes content from one or more URLs using the Gemini URL Context tool. Use this when the user asks you to read, summarize, analyze, compare, or extract information from web pages, articles, documentation, or any publicly accessible URL. Supports HTML pages, PDFs, images, JSON, and plain text. Can process up to 20 URLs per request.',
+    description: 'Fetches and analyzes content from one or more URLs using the Gemini URL Context tool. Use this ONLY when the user EXPLICITLY asks you to read, summarize, analyze, compare, or extract information from a URL — NOT when the user wants to create or edit a canvas app that references a URL. Canvas tools (apsara_canvas, edit_canvas) have their own built-in URL context and will fetch URLs automatically. Only use this tool for standalone URL information requests like "summarize this article" or "what does this page say?". Supports HTML pages, PDFs, images, JSON, and plain text. Can process up to 20 URLs per request.',
     parameters: {
       type: 'object',
       properties: {

@@ -375,6 +375,41 @@ this.session.sendClientContent({ turns: text, turnComplete: true }); // Step 2: 
 
 ---
 
+## v0.1.0 — Per-Plugin Interaction Config (Feb 13, 2026)
+
+### Summary
+
+Interaction settings now support per-tool configuration — each plugin (Canvas, Interpreter, URL Context) receives its own model/temperature/thinking settings.
+
+### What was done
+
+- **Per-tool interaction config**: `ws-handler.js` reads nested `interactionConfig { canvas: {...}, interpreter: {...}, url_context: {...} }` from session config.
+- **Backward compatibility**: Detects flat config format (`{ model: ... }`) and replicates it to all tools.
+- **Config routing**: `run_code`/`edit_code` → `interactionConfig.interpreter`, `url_context` → `interactionConfig.url_context`, `apsara_canvas`/`edit_canvas` → `interactionConfig.canvas`.
+
+### Code Change
+
+```diff
+-const interactionConfig = sessionConfig.interactionConfig || {};
++const rawIC = sessionConfig.interactionConfig || {};
++const isNested = rawIC.canvas || rawIC.interpreter || rawIC.url_context;
++sessionConfig.interactionConfig = isNested ? rawIC : { canvas: rawIC, interpreter: rawIC, url_context: rawIC };
+
+-const iConfig = geminiSession?.config?.interactionConfig || {};
++const iConfig = geminiSession?.config?.interactionConfig?.interpreter || {}; // per-tool
+```
+
+#### Built-in URL Context for Canvas
+- **`canvas-service.js`**: Added `tools: [{ type: 'url_context' }]` to `_generate`, `_generateStreaming`, and `_fix` methods.
+- Canvas model can now autonomously fetch and analyze URLs referenced in prompts (e.g., "create a portfolio like devshubh.me").
+- Updated `CANVAS_SYSTEM_INSTRUCTION` to inform the model about URL Context capability.
+
+#### System Prompt Updates
+- **`config.js`**: Updated Live API system instruction with URL context routing guidance.
+- **`tools.js`**: Updated `apsara_canvas`, `edit_canvas` descriptions — mention built-in URL context. Updated `url_context` description — only for explicit standalone URL requests.
+
+---
+
 ## Version Summary
 
 | Version | Milestone | Date | Key Feature |
@@ -389,6 +424,7 @@ this.session.sendClientContent({ turns: text, turnComplete: true }); // Step 2: 
 | **v0.0.7** | Edit & Sessions | Feb 10 | edit_code, session management, image handling |
 | **v0.0.8** | URL Context | Feb 11 | Web page fetching and analysis tool |
 | **v0.0.9** | Interruption | Feb 11 | Text interrupts speech via dual-send |
+| **v0.1.0** | Per-Plugin Config | Feb 13 | Per-tool interaction settings (model/temp/thinking) |
 
 ---
 

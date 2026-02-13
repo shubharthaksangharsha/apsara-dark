@@ -411,6 +411,48 @@ By sending both: interruption (from realtimeInput) + proper conversation history
 
 ---
 
+## v0.1.0 — Canvas UX Round 2 & Per-Plugin Settings (Feb 13, 2026)
+
+### Summary
+
+Refined Canvas user experience — version-aware code navigation, simplified streaming cards, direct Ready→Canvas navigation, and per-plugin interaction settings.
+
+### What was done
+
+#### Version-Aware Code View
+- Tapping "Code" from a specific version preview now opens `CanvasDetailViewer` pre-selected to that version's code.
+- `CanvasViewer` passes `viewingVersion` to `onViewCode`, `CanvasDetailViewer` accepts `initialVersion`.
+
+#### Simplified CanvasStreamCard
+- During streaming: card shows header only (no auto-expand, no live code).
+- Tap during streaming: expands to show code in monospace view.
+- Tap when "Ready": navigates directly to `canvas/{canvasId}` route → opens that canvas preview.
+- New `canvas/{canvasId}` route in `Navigation.kt`, `CanvasScreen` auto-fetches and opens the canvas.
+
+#### Per-Plugin Interaction Settings
+- Replaced single shared interaction config with per-plugin fields: Canvas, Interpreter, URL Context.
+- Each plugin has independent: model, temperature, thinking level, thinking summaries, max output tokens.
+- `SettingsScreen` shows collapsible per-plugin sections via reusable `PluginSettingsContent` composable.
+- `buildConfigMap()` sends nested `interactionConfig { canvas: {...}, interpreter: {...}, url_context: {...} }`.
+- Backend `ws-handler.js` reads per-tool config with flat-format backward compatibility.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `CanvasScreen.kt` | Version-aware code view, `canvasId` auto-open |
+| `HomeScreen.kt` | Simplified `CanvasStreamCard`, `onNavigateToCanvasApp` threading |
+| `Navigation.kt` | `canvas/{canvasId}` route with NavType.StringType |
+| `LiveSettingsManager.kt` | Per-plugin settings fields, setters, nested config map |
+| `SettingsScreen.kt` | Collapsible per-plugin `InteractionSettingsPanel` |
+| `ws-handler.js` | Per-tool interaction config lookup with fallback |
+| `HomeScreen.kt` | CanvasStreamCard tap fix: code cards toggle code, non-code cards navigate |
+| `canvas-service.js` | Built-in URL Context tool for create/edit/fix generation |
+| `tools.js` | Updated tool descriptions for URL context routing |
+| `config.js` | Live API system instruction: URL context routing guidance |
+
+---
+
 ## Version Summary
 
 | Version | Milestone | Date | Key Feature |
@@ -425,6 +467,7 @@ By sending both: interruption (from realtimeInput) + proper conversation history
 | **v0.0.7** | Interpreter | Feb 10 | Inline code execution, images, session management |
 | **v0.0.8** | URL Context | Feb 11 | Web page analysis tool, Settings UX polish |
 | **v0.0.9** | Interruption | Feb 11 | Text interrupts speech, system-wide polish |
+| **v0.1.0** | Canvas UX R2 | Feb 13 | Version-aware code, simplified stream card, per-plugin settings |
 
 ---
 

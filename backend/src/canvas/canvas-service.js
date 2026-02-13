@@ -63,7 +63,10 @@ Your mission: Generate complete, self-contained, single-file web applications us
 - Border radius: 12-16px for cards, 8px for buttons
 - Font: system-ui, -apple-system, sans-serif
 - Smooth hover transitions (0.2s ease)
-- Use \`* { box-sizing: border-box; }\` and \`body { margin: 0; overflow-x: hidden; }\``;
+- Use \`* { box-sizing: border-box; }\` and \`body { margin: 0; overflow-x: hidden; }\`
+
+**URL Context:**
+You have access to the URL Context tool. If the user references any URL (e.g., "create a portfolio like devshubh.me" or "clone this page: https://example.com"), you can automatically fetch and analyze the content at that URL to inform your design. Use this to replicate layouts, color schemes, content structure, or any relevant information from the referenced site.`;
 
 export class CanvasService {
   constructor(apiKey) {
@@ -356,6 +359,7 @@ export class CanvasService {
         thinking_level: config.thinking_level ?? CANVAS_DEFAULTS.thinking_level,
         thinking_summaries: config.thinking_summaries ?? CANVAS_DEFAULTS.thinking_summaries,
       },
+      tools: [{ type: 'url_context' }],
     };
 
     // Multi-turn: chain to previous interaction for conversation context
@@ -402,6 +406,7 @@ export class CanvasService {
         thinking_level: config.thinking_level ?? CANVAS_DEFAULTS.thinking_level,
         thinking_summaries: config.thinking_summaries ?? CANVAS_DEFAULTS.thinking_summaries,
       },
+      tools: [{ type: 'url_context' }],
     };
 
     if (previousInteractionId) {
@@ -457,6 +462,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
         max_output_tokens: config.max_output_tokens ?? CANVAS_DEFAULTS.max_output_tokens,
         thinking_level: config.thinking_level ?? CANVAS_DEFAULTS.thinking_level,
       },
+      tools: [{ type: 'url_context' }],
     };
 
     // Chain to previous interaction for context

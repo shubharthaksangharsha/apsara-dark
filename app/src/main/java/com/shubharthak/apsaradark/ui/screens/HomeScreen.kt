@@ -949,11 +949,14 @@ private fun CanvasStreamCard(
                     shape = RoundedCornerShape(12.dp)
                 )
                 .clickable {
-                    if (isCompleted && canvasId != null) {
-                        // Navigate to that canvas
+                    if (isCompleted && charCount > 0) {
+                        // Card has streamed code — toggle to show completed code
+                        expanded = !expanded
+                    } else if (isCompleted && canvasId != null) {
+                        // No streamed code — navigate to canvas
                         onNavigateToCanvasApp(canvasId)
                     } else if (isRunning) {
-                        // Toggle code view
+                        // Toggle code view during streaming
                         expanded = !expanded
                     }
                 }
@@ -1003,14 +1006,14 @@ private fun CanvasStreamCard(
             }
 
             // Hint
-            if (isCompleted && canvasId != null) {
+            if (isCompleted && canvasId != null && charCount == 0) {
                 Text(
                     text = "›",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = palette.accent
                 )
-            } else if (isRunning && charCount > 0) {
+            } else if (charCount > 0) {
                 Text(
                     text = if (expanded) "▾" else "▸",
                     fontSize = 12.sp,
@@ -1021,7 +1024,7 @@ private fun CanvasStreamCard(
 
         // Expandable code view (only during streaming, no preview)
         AnimatedVisibility(
-            visible = expanded && isRunning && charCount > 0,
+            visible = expanded && charCount > 0,
             enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
             exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
         ) {
