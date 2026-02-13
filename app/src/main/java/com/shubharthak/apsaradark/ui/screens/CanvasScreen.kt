@@ -63,6 +63,7 @@ private const val BACKEND_BASE = "https://apsara-dark-backend.devshubh.me"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CanvasScreen(
+    canvasId: String? = null,
     onBack: () -> Unit
 ) {
     val themeManager = LocalThemeManager.current
@@ -74,6 +75,33 @@ fun CanvasScreen(
     var selectedApp by remember { mutableStateOf<CanvasApp?>(null) }
     var showDeleteDialog by remember { mutableStateOf<CanvasApp?>(null) }
     var detailApp by remember { mutableStateOf<CanvasApp?>(null) } // For "View Code" detail screen
+    var detailVersion by remember { mutableStateOf<Int?>(null) } // Version to show in detail view
+
+    // Auto-open a specific canvas when canvasId is provided
+    LaunchedEffect(canvasId) {
+        if (canvasId != null && selectedApp == null) {
+            try {
+                val app = withContext(Dispatchers.IO) {
+                    val url = URL("$BACKEND_BASE/api/canvas/$canvasId")
+                    val conn = url.openConnection()
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    val body = conn.getInputStream().bufferedReader().readText()
+                    val json = JSONObject(body)
+                    val a = json.getJSONObject("app")
+                    CanvasApp(
+                        id = a.getString("id"),
+                        title = a.optString("title", ""),
+                        description = a.optString("description", ""),
+                        status = a.optString("status", "ready"),
+                        createdAt = a.optString("created_at", ""),
+                        renderUrl = "$BACKEND_BASE/api/canvas/${a.getString("id")}/render"
+                    )
+                }
+                selectedApp = app
+            } catch (_: Exception) {}
+        }
+    }
 
     // Fetch canvas apps from backend
     fun loadApps() {
@@ -140,7 +168,8 @@ fun CanvasScreen(
         CanvasDetailViewer(
             app = detailApp!!,
             palette = palette,
-            onBack = { detailApp = null }
+            initialVersion = detailVersion,
+            onBack = { detailApp = null; detailVersion = null }
         )
         return
     }
@@ -151,9 +180,10 @@ fun CanvasScreen(
             app = selectedApp!!,
             palette = palette,
             onBack = { selectedApp = null },
-            onViewCode = {
+            onViewCode = { version ->
                 val app = selectedApp!!
                 selectedApp = null
+                detailVersion = version
                 detailApp = app
             }
         )
@@ -497,7 +527,7 @@ private fun CanvasViewer(
     app: CanvasApp,
     palette: ApsaraColorPalette,
     onBack: () -> Unit,
-    onViewCode: () -> Unit = {}
+    onViewCode: (Int?) -> Unit = {}
 ) {
     val context = LocalContext.current
     var showVersionSheet by remember { mutableStateOf(false) }
@@ -587,7 +617,7 @@ private fun CanvasViewer(
                         }
                     }
                     // View code
-                    IconButton(onClick = onViewCode) {
+                    IconButton(onClick = { onViewCode(viewingVersion) }) {
                         Icon(
                             Icons.Outlined.Code,
                             contentDescription = "View code",
@@ -804,6 +834,7 @@ private fun CanvasViewer(
 private fun CanvasDetailViewer(
     app: CanvasApp,
     palette: ApsaraColorPalette,
+    initialVersion: Int? = null,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -814,7 +845,7 @@ private fun CanvasDetailViewer(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Versions, 3=Log, 4=Config, 5=Info
     // null = current version, otherwise the version number from versions list
-    var selectedVersion by remember { mutableStateOf<Int?>(null) }
+    var selectedVersion by remember { mutableStateOf(initialVersion) }
 
     // Fetch detail from backend
     LaunchedEffect(app.id) {

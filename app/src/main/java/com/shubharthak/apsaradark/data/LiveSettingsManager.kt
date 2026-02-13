@@ -90,20 +90,42 @@ class LiveSettingsManager(context: Context) {
     var toolUrlContextAsync by mutableStateOf(prefs.getBoolean("tool_url_context_async", true))
         private set
 
-    // ─── Interaction Settings (shared by Canvas, Interpreter, and future tools) ─────
-    var interactionModel by mutableStateOf(prefs.getString("interaction_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
+    // ─── Per-Plugin Interaction Settings ─────────────────────────────────────────
+
+    // Canvas plugin settings
+    var canvasModel by mutableStateOf(prefs.getString("canvas_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
+        private set
+    var canvasMaxOutputTokens by mutableStateOf(prefs.getInt("canvas_max_output_tokens", 65536))
+        private set
+    var canvasThinkingLevel by mutableStateOf(prefs.getString("canvas_thinking_level", "high") ?: "high")
+        private set
+    var canvasThinkingSummaries by mutableStateOf(prefs.getString("canvas_thinking_summaries", "auto") ?: "auto")
+        private set
+    var canvasTemperature by mutableFloatStateOf(prefs.getFloat("canvas_temperature", 0.7f))
         private set
 
-    var interactionMaxOutputTokens by mutableStateOf(prefs.getInt("interaction_max_output_tokens", 65536))
+    // Interpreter plugin settings
+    var interpreterModel by mutableStateOf(prefs.getString("interpreter_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
+        private set
+    var interpreterMaxOutputTokens by mutableStateOf(prefs.getInt("interpreter_max_output_tokens", 65536))
+        private set
+    var interpreterThinkingLevel by mutableStateOf(prefs.getString("interpreter_thinking_level", "high") ?: "high")
+        private set
+    var interpreterThinkingSummaries by mutableStateOf(prefs.getString("interpreter_thinking_summaries", "auto") ?: "auto")
+        private set
+    var interpreterTemperature by mutableFloatStateOf(prefs.getFloat("interpreter_temperature", 0.7f))
         private set
 
-    var interactionThinkingLevel by mutableStateOf(prefs.getString("interaction_thinking_level", "high") ?: "high")
+    // URL Context plugin settings
+    var urlContextModel by mutableStateOf(prefs.getString("url_context_model", "gemini-2.5-flash") ?: "gemini-2.5-flash")
         private set
-
-    var interactionThinkingSummaries by mutableStateOf(prefs.getString("interaction_thinking_summaries", "auto") ?: "auto")
+    var urlContextMaxOutputTokens by mutableStateOf(prefs.getInt("url_context_max_output_tokens", 65536))
         private set
-
-    var interactionTemperature by mutableFloatStateOf(prefs.getFloat("interaction_temperature", 0.7f))
+    var urlContextThinkingLevel by mutableStateOf(prefs.getString("url_context_thinking_level", "high") ?: "high")
+        private set
+    var urlContextThinkingSummaries by mutableStateOf(prefs.getString("url_context_thinking_summaries", "auto") ?: "auto")
+        private set
+    var urlContextTemperature by mutableFloatStateOf(prefs.getFloat("url_context_temperature", 0.7f))
         private set
 
     // Media resolution for video/image input (LOW, MEDIUM, HIGH)
@@ -137,11 +159,28 @@ class LiveSettingsManager(context: Context) {
     fun updateToolInterpreterAsync(v: Boolean) { toolInterpreterAsync = v; prefs.edit().putBoolean("tool_interpreter_async", v).apply() }
     fun updateToolUrlContext(v: Boolean) { toolUrlContext = v; prefs.edit().putBoolean("tool_url_context", v).apply() }
     fun updateToolUrlContextAsync(v: Boolean) { toolUrlContextAsync = v; prefs.edit().putBoolean("tool_url_context_async", v).apply() }
-    fun updateInteractionModel(v: String) { interactionModel = v; prefs.edit().putString("interaction_model", v).apply() }
-    fun updateInteractionMaxOutputTokens(v: Int) { interactionMaxOutputTokens = v; prefs.edit().putInt("interaction_max_output_tokens", v).apply() }
-    fun updateInteractionThinkingLevel(v: String) { interactionThinkingLevel = v; prefs.edit().putString("interaction_thinking_level", v).apply() }
-    fun updateInteractionThinkingSummaries(v: String) { interactionThinkingSummaries = v; prefs.edit().putString("interaction_thinking_summaries", v).apply() }
-    fun updateInteractionTemperature(v: Float) { interactionTemperature = v; prefs.edit().putFloat("interaction_temperature", v).apply() }
+
+    // Per-plugin interaction setters — Canvas
+    fun updateCanvasModel(v: String) { canvasModel = v; prefs.edit().putString("canvas_model", v).apply() }
+    fun updateCanvasMaxOutputTokens(v: Int) { canvasMaxOutputTokens = v; prefs.edit().putInt("canvas_max_output_tokens", v).apply() }
+    fun updateCanvasThinkingLevel(v: String) { canvasThinkingLevel = v; prefs.edit().putString("canvas_thinking_level", v).apply() }
+    fun updateCanvasThinkingSummaries(v: String) { canvasThinkingSummaries = v; prefs.edit().putString("canvas_thinking_summaries", v).apply() }
+    fun updateCanvasTemperature(v: Float) { canvasTemperature = v; prefs.edit().putFloat("canvas_temperature", v).apply() }
+
+    // Per-plugin interaction setters — Interpreter
+    fun updateInterpreterModel(v: String) { interpreterModel = v; prefs.edit().putString("interpreter_model", v).apply() }
+    fun updateInterpreterMaxOutputTokens(v: Int) { interpreterMaxOutputTokens = v; prefs.edit().putInt("interpreter_max_output_tokens", v).apply() }
+    fun updateInterpreterThinkingLevel(v: String) { interpreterThinkingLevel = v; prefs.edit().putString("interpreter_thinking_level", v).apply() }
+    fun updateInterpreterThinkingSummaries(v: String) { interpreterThinkingSummaries = v; prefs.edit().putString("interpreter_thinking_summaries", v).apply() }
+    fun updateInterpreterTemperature(v: Float) { interpreterTemperature = v; prefs.edit().putFloat("interpreter_temperature", v).apply() }
+
+    // Per-plugin interaction setters — URL Context
+    fun updateUrlContextModel(v: String) { urlContextModel = v; prefs.edit().putString("url_context_model", v).apply() }
+    fun updateUrlContextMaxOutputTokens(v: Int) { urlContextMaxOutputTokens = v; prefs.edit().putInt("url_context_max_output_tokens", v).apply() }
+    fun updateUrlContextThinkingLevel(v: String) { urlContextThinkingLevel = v; prefs.edit().putString("url_context_thinking_level", v).apply() }
+    fun updateUrlContextThinkingSummaries(v: String) { urlContextThinkingSummaries = v; prefs.edit().putString("url_context_thinking_summaries", v).apply() }
+    fun updateUrlContextTemperature(v: Float) { urlContextTemperature = v; prefs.edit().putFloat("url_context_temperature", v).apply() }
+
     fun updateMediaResolution(v: String) { mediaResolution = v; prefs.edit().putString("media_resolution", v).apply() }
 
     /** Build the config JSON map to send to the backend on connect. */
@@ -203,13 +242,29 @@ class LiveSettingsManager(context: Context) {
             config["toolAsyncModes"] = toolAsyncModes
         }
 
-        // Interaction settings — shared by Canvas, Interpreter, and future tools
+        // Per-plugin interaction settings
         config["interactionConfig"] = mapOf(
-            "model" to interactionModel,
-            "max_output_tokens" to interactionMaxOutputTokens,
-            "thinking_level" to interactionThinkingLevel,
-            "thinking_summaries" to interactionThinkingSummaries,
-            "temperature" to interactionTemperature.toDouble()
+            "canvas" to mapOf(
+                "model" to canvasModel,
+                "max_output_tokens" to canvasMaxOutputTokens,
+                "thinking_level" to canvasThinkingLevel,
+                "thinking_summaries" to canvasThinkingSummaries,
+                "temperature" to canvasTemperature.toDouble()
+            ),
+            "interpreter" to mapOf(
+                "model" to interpreterModel,
+                "max_output_tokens" to interpreterMaxOutputTokens,
+                "thinking_level" to interpreterThinkingLevel,
+                "thinking_summaries" to interpreterThinkingSummaries,
+                "temperature" to interpreterTemperature.toDouble()
+            ),
+            "url_context" to mapOf(
+                "model" to urlContextModel,
+                "max_output_tokens" to urlContextMaxOutputTokens,
+                "thinking_level" to urlContextThinkingLevel,
+                "thinking_summaries" to urlContextThinkingSummaries,
+                "temperature" to urlContextTemperature.toDouble()
+            )
         )
 
         return config

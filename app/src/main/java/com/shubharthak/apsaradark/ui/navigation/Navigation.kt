@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.shubharthak.apsaradark.data.LocalLiveSettings
 import com.shubharthak.apsaradark.live.LiveSessionViewModel
 import com.shubharthak.apsaradark.ui.screens.CanvasScreen
@@ -20,6 +22,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PLUGINS = "plugins"
     const val CANVAS = "canvas"
+    const val CANVAS_APP = "canvas/{canvasId}"
     const val INTERPRETER = "interpreter"
 }
 
@@ -63,6 +66,9 @@ fun AppNavigation(
                 onNavigateToCanvas = {
                     navController.navigate(Routes.CANVAS)
                 },
+                onNavigateToCanvasApp = { canvasId ->
+                    navController.navigate("canvas/$canvasId")
+                },
                 onNavigateToInterpreter = {
                     navController.navigate(Routes.INTERPRETER)
                 }
@@ -95,6 +101,18 @@ fun AppNavigation(
                     // Don't open the drawer when returning from Canvas —
                     // Canvas can be opened via Snackbar during a live session,
                     // so we should go straight back to the live view.
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(
+            route = Routes.CANVAS_APP,
+            arguments = listOf(navArgument("canvasId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val canvasId = backStackEntry.arguments?.getString("canvasId")
+            CanvasScreen(
+                canvasId = canvasId,
+                onBack = {
                     navController.popBackStack()
                 }
             )

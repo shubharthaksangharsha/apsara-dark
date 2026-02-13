@@ -175,29 +175,29 @@ export function handleWebSocket(ws, apiKey) {
                 };
                 let result;
                 if (fc.name === 'run_code') {
-                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  const iConfig = geminiSession?.config?.interactionConfig?.interpreter || {};
                   result = await executeInterpreterTool(fc.args || {}, progressCb, iConfig);
                   // Send image data to client for inline display
                   if (result.success && result.images && result.images.length > 0) {
                     send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                   }
                 } else if (fc.name === 'edit_code') {
-                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  const iConfig = geminiSession?.config?.interactionConfig?.interpreter || {};
                   result = await executeCodeEditTool(fc.args || {}, progressCb, iConfig);
                   if (result.success && result.images && result.images.length > 0) {
                     send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                   }
                 } else if (fc.name === 'url_context') {
-                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  const iConfig = geminiSession?.config?.interactionConfig?.url_context || {};
                   result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                 } else if (fc.name === 'edit_canvas') {
-                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                   const chunkCb = (delta) => {
                     send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
                   };
                   result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb);
                 } else {
-                  const iConfig = geminiSession?.config?.interactionConfig || {};
+                  const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                   const chunkCb = (delta) => {
                     send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
                   };
@@ -234,28 +234,28 @@ export function handleWebSocket(ws, apiKey) {
                     send({ type: progressType, tool_call_id: fc.id, status, message });
                   };
                   if (fc.name === 'run_code') {
-                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    const iConfig = geminiSession?.config?.interactionConfig?.interpreter || {};
                     result = await executeInterpreterTool(fc.args || {}, progressCb, iConfig);
                     if (result.success && result.images && result.images.length > 0) {
                       send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                     }
                   } else if (fc.name === 'edit_code') {
-                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    const iConfig = geminiSession?.config?.interactionConfig?.interpreter || {};
                     result = await executeCodeEditTool(fc.args || {}, progressCb, iConfig);
                     if (result.success && result.images && result.images.length > 0) {
                       send({ type: 'interpreter_images', sessionId: result.session_id, images: result.images });
                     }
                   } else if (fc.name === 'url_context') {
-                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    const iConfig = geminiSession?.config?.interactionConfig?.url_context || {};
                     result = await executeUrlContextTool(fc.args || {}, progressCb, iConfig);
                   } else if (fc.name === 'edit_canvas') {
-                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                     const chunkCb = (delta) => {
                       send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
                     };
                     result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb);
                   } else {
-                    const iConfig = geminiSession?.config?.interactionConfig || {};
+                    const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                     const chunkCb = (delta) => {
                       send({ type: 'canvas_html_delta', tool_call_id: fc.id, delta });
                     };
@@ -359,9 +359,11 @@ export function handleWebSocket(ws, apiKey) {
         }
         // Store in config for use during tool execution
         sessionConfig.toolAsyncModes = toolAsyncModes;
-        // Extract interaction config for Canvas/Interpreter tools
-        const interactionConfig = sessionConfig.interactionConfig || {};
-        sessionConfig.interactionConfig = interactionConfig;
+        // Extract interaction config for Canvas/Interpreter tools (per-plugin or flat fallback)
+        const rawIC = sessionConfig.interactionConfig || {};
+        // Support both new nested format { canvas: {...}, interpreter: {...} } and old flat format { model: ... }
+        const isNested = rawIC.canvas || rawIC.interpreter || rawIC.url_context;
+        sessionConfig.interactionConfig = isNested ? rawIC : { canvas: rawIC, interpreter: rawIC, url_context: rawIC };
         // Clean up old global flag if present
         delete sessionConfig.asyncFunctionCalls;
 

@@ -556,73 +556,184 @@ private fun LiveSettingsPanel(
     }
 }
 
-// ─── Interaction Settings Panel (Canvas, Interpreter, etc.) ─────────────────
+// ─── Interaction Settings Panel (per-plugin: Canvas, Interpreter, URL Context) ──
 
 @Composable
 private fun InteractionSettingsPanel(
     liveSettings: LiveSettingsManager,
     palette: ApsaraColorPalette
 ) {
+    var canvasExpanded by remember { mutableStateOf(false) }
+    var interpreterExpanded by remember { mutableStateOf(false) }
+    var urlContextExpanded by remember { mutableStateOf(false) }
+
+    val canvasArrow by animateFloatAsState(
+        targetValue = if (canvasExpanded) 180f else 0f,
+        animationSpec = tween(250), label = "canvasArrow"
+    )
+    val interpreterArrow by animateFloatAsState(
+        targetValue = if (interpreterExpanded) 180f else 0f,
+        animationSpec = tween(250), label = "interpreterArrow"
+    )
+    val urlContextArrow by animateFloatAsState(
+        targetValue = if (urlContextExpanded) 180f else 0f,
+        animationSpec = tween(250), label = "urlContextArrow"
+    )
+
     Column(
         modifier = Modifier.padding(horizontal = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // Description
         Text(
-            text = "Shared settings for Canvas, Interpreter, and other Interactions API tools.",
+            text = "Configure model, temperature, and thinking settings independently for each plugin.",
             fontSize = 12.sp,
             color = palette.textTertiary,
             lineHeight = 16.sp,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         )
 
-        // Model selector
-        SettingsDropdown(
-            label = "Interaction Model",
-            value = liveSettings.interactionModel,
-            options = LiveSettingsManager.availableInteractionModels,
-            onSelect = { liveSettings.updateInteractionModel(it) },
+        // ── Canvas Section ──
+        SectionHeader(
+            title = "Canvas",
+            isExpanded = canvasExpanded,
+            rotation = canvasArrow,
+            onClick = { canvasExpanded = !canvasExpanded },
             palette = palette
         )
+        AnimatedVisibility(visible = canvasExpanded) {
+            Column(
+                modifier = Modifier.padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PluginSettingsContent(
+                    model = liveSettings.canvasModel,
+                    onModelChange = { liveSettings.updateCanvasModel(it) },
+                    maxTokens = liveSettings.canvasMaxOutputTokens,
+                    onMaxTokensChange = { liveSettings.updateCanvasMaxOutputTokens(it) },
+                    temperature = liveSettings.canvasTemperature,
+                    onTemperatureChange = { liveSettings.updateCanvasTemperature(it) },
+                    thinkingLevel = liveSettings.canvasThinkingLevel,
+                    onThinkingLevelChange = { liveSettings.updateCanvasThinkingLevel(it) },
+                    thinkingSummaries = liveSettings.canvasThinkingSummaries,
+                    onThinkingSummariesChange = { liveSettings.updateCanvasThinkingSummaries(it) },
+                    palette = palette
+                )
+            }
+        }
 
-        // Max output tokens
-        SettingsDropdown(
-            label = "Max Output Tokens",
-            value = liveSettings.interactionMaxOutputTokens.toString(),
-            options = LiveSettingsManager.availableMaxOutputTokens.map { it.toString() },
-            onSelect = { liveSettings.updateInteractionMaxOutputTokens(it.toIntOrNull() ?: 65536) },
+        // ── Interpreter Section ──
+        SectionHeader(
+            title = "Interpreter",
+            isExpanded = interpreterExpanded,
+            rotation = interpreterArrow,
+            onClick = { interpreterExpanded = !interpreterExpanded },
             palette = palette
         )
+        AnimatedVisibility(visible = interpreterExpanded) {
+            Column(
+                modifier = Modifier.padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PluginSettingsContent(
+                    model = liveSettings.interpreterModel,
+                    onModelChange = { liveSettings.updateInterpreterModel(it) },
+                    maxTokens = liveSettings.interpreterMaxOutputTokens,
+                    onMaxTokensChange = { liveSettings.updateInterpreterMaxOutputTokens(it) },
+                    temperature = liveSettings.interpreterTemperature,
+                    onTemperatureChange = { liveSettings.updateInterpreterTemperature(it) },
+                    thinkingLevel = liveSettings.interpreterThinkingLevel,
+                    onThinkingLevelChange = { liveSettings.updateInterpreterThinkingLevel(it) },
+                    thinkingSummaries = liveSettings.interpreterThinkingSummaries,
+                    onThinkingSummariesChange = { liveSettings.updateInterpreterThinkingSummaries(it) },
+                    palette = palette
+                )
+            }
+        }
 
-        // Temperature slider
-        SettingsSlider(
-            label = "Interaction Temperature",
-            value = liveSettings.interactionTemperature,
-            onValueChange = { liveSettings.updateInteractionTemperature(it) },
-            valueRange = 0f..2f,
+        // ── URL Context Section ──
+        SectionHeader(
+            title = "URL Context",
+            isExpanded = urlContextExpanded,
+            rotation = urlContextArrow,
+            onClick = { urlContextExpanded = !urlContextExpanded },
             palette = palette
         )
-
-        // Thinking level
-        SettingsDropdown(
-            label = "Thinking Level",
-            value = liveSettings.interactionThinkingLevel,
-            options = LiveSettingsManager.availableThinkingLevels,
-            onSelect = { liveSettings.updateInteractionThinkingLevel(it) },
-            palette = palette
-        )
-
-        // Thinking summaries
-        SettingsDropdown(
-            label = "Thinking Summaries",
-            value = liveSettings.interactionThinkingSummaries,
-            options = LiveSettingsManager.availableThinkingSummaries,
-            onSelect = { liveSettings.updateInteractionThinkingSummaries(it) },
-            palette = palette
-        )
+        AnimatedVisibility(visible = urlContextExpanded) {
+            Column(
+                modifier = Modifier.padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PluginSettingsContent(
+                    model = liveSettings.urlContextModel,
+                    onModelChange = { liveSettings.updateUrlContextModel(it) },
+                    maxTokens = liveSettings.urlContextMaxOutputTokens,
+                    onMaxTokensChange = { liveSettings.updateUrlContextMaxOutputTokens(it) },
+                    temperature = liveSettings.urlContextTemperature,
+                    onTemperatureChange = { liveSettings.updateUrlContextTemperature(it) },
+                    thinkingLevel = liveSettings.urlContextThinkingLevel,
+                    onThinkingLevelChange = { liveSettings.updateUrlContextThinkingLevel(it) },
+                    thinkingSummaries = liveSettings.urlContextThinkingSummaries,
+                    onThinkingSummariesChange = { liveSettings.updateUrlContextThinkingSummaries(it) },
+                    palette = palette
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
     }
+}
+
+/** Reusable per-plugin settings content block */
+@Composable
+private fun PluginSettingsContent(
+    model: String,
+    onModelChange: (String) -> Unit,
+    maxTokens: Int,
+    onMaxTokensChange: (Int) -> Unit,
+    temperature: Float,
+    onTemperatureChange: (Float) -> Unit,
+    thinkingLevel: String,
+    onThinkingLevelChange: (String) -> Unit,
+    thinkingSummaries: String,
+    onThinkingSummariesChange: (String) -> Unit,
+    palette: ApsaraColorPalette
+) {
+    SettingsDropdown(
+        label = "Model",
+        value = model,
+        options = LiveSettingsManager.availableInteractionModels,
+        onSelect = onModelChange,
+        palette = palette
+    )
+    SettingsDropdown(
+        label = "Max Output Tokens",
+        value = maxTokens.toString(),
+        options = LiveSettingsManager.availableMaxOutputTokens.map { it.toString() },
+        onSelect = { onMaxTokensChange(it.toIntOrNull() ?: 65536) },
+        palette = palette
+    )
+    SettingsSlider(
+        label = "Temperature",
+        value = temperature,
+        onValueChange = onTemperatureChange,
+        valueRange = 0f..2f,
+        palette = palette
+    )
+    SettingsDropdown(
+        label = "Thinking Level",
+        value = thinkingLevel,
+        options = LiveSettingsManager.availableThinkingLevels,
+        onSelect = onThinkingLevelChange,
+        palette = palette
+    )
+    SettingsDropdown(
+        label = "Thinking Summaries",
+        value = thinkingSummaries,
+        options = LiveSettingsManager.availableThinkingSummaries,
+        onSelect = onThinkingSummariesChange,
+        palette = palette
+    )
 }
 
 // ─── Settings Components ────────────────────────────────────────────────────

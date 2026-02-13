@@ -62,6 +62,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToPlugins: () -> Unit = {},
     onNavigateToCanvas: () -> Unit = {},
+    onNavigateToCanvasApp: (String) -> Unit = {},
     onNavigateToInterpreter: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -475,6 +476,7 @@ fun HomeScreen(
                         showInput = liveSettings.inputTranscription,
                         showOutput = liveSettings.outputTranscription,
                         palette = palette,
+                        onNavigateToCanvasApp = onNavigateToCanvasApp,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues)
@@ -563,6 +565,7 @@ private fun LiveModeContent(
     showInput: Boolean,
     showOutput: Boolean,
     palette: ApsaraColorPalette,
+    onNavigateToCanvasApp: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -650,7 +653,8 @@ private fun LiveModeContent(
                             isStreaming = message.isStreaming,
                             thought = message.thought,
                             toolCalls = message.toolCalls,
-                            palette = palette
+                            palette = palette,
+                            onNavigateToCanvasApp = onNavigateToCanvasApp
                         )
                         else -> { /* TOOL_CALL no longer rendered as separate items */ }
                     }
@@ -693,10 +697,11 @@ private fun UserBubble(
 @Composable
 private fun ApsaraBubble(
     text: String,
-    isStreaming: Boolean,
-    thought: String?,
+    isStreaming: Boolean = false,
+    thought: String? = null,
     toolCalls: List<EmbeddedToolCall> = emptyList(),
-    palette: ApsaraColorPalette
+    palette: ApsaraColorPalette,
+    onNavigateToCanvasApp: (String) -> Unit = {}
 ) {
     var thoughtsExpanded by remember { mutableStateOf(false) }
 
@@ -756,7 +761,8 @@ private fun ApsaraBubble(
                     } else if (tc.name == "apsara_canvas" || tc.name == "edit_canvas") {
                         CanvasStreamCard(
                             toolCall = tc,
-                            palette = palette
+                            palette = palette,
+                            onNavigateToCanvasApp = onNavigateToCanvasApp
                         )
                     } else {
                         ToolCallCard(
@@ -914,11 +920,10 @@ private fun ToolCallCard(
 @Composable
 private fun CanvasStreamCard(
     toolCall: EmbeddedToolCall,
-    palette: ApsaraColorPalette
+    palette: ApsaraColorPalette,
+    onNavigateToCanvasApp: (String) -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // false = Code, true = Preview (only used after completion)
-    var showPreview by remember { mutableStateOf(true) }
 
     val isCompleted = toolCall.status == LiveMessage.ToolStatus.COMPLETED
     val isRunning = toolCall.status == LiveMessage.ToolStatus.RUNNING
@@ -926,13 +931,8 @@ private fun CanvasStreamCard(
     val displayName = if (isEdit) "Canvas Edit" else "Canvas"
     val htmlContent = toolCall.codeOutput ?: ""
     val progressText = toolCall.codeBlock ?: ""
-    val hasHtml = htmlContent.length > 100
     val charCount = htmlContent.length
-
-    // Auto-expand during streaming once we have content
-    LaunchedEffect(isRunning, hasHtml) {
-        if (isRunning && hasHtml && !expanded) expanded = true
-    }
+    val canvasId = toolCall.canvasId
 
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -948,8 +948,14 @@ private fun CanvasStreamCard(
                             else palette.textTertiary.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(12.dp)
                 )
-                .clickable(enabled = hasHtml || isCompleted) {
-                    expanded = !expanded
+                .clickable {
+                    if (isCompleted && canvasId != null) {
+                        // Navigate to that canvas
+                        onNavigateToCanvasApp(canvasId)
+                    } else if (isRunning) {
+                        // Toggle code view
+                        expanded = !expanded
+                    }
                 }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -996,8 +1002,15 @@ private fun CanvasStreamCard(
                 )
             }
 
-            // Expand hint
-            if (hasHtml || isCompleted) {
+            // Hint
+            if (isCompleted && canvasId != null) {
+                Text(
+                    text = "›",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.accent
+                )
+            } else if (isRunning && charCount > 0) {
                 Text(
                     text = if (expanded) "▾" else "▸",
                     fontSize = 12.sp,
@@ -1006,9 +1019,9 @@ private fun CanvasStreamCard(
             }
         }
 
-        // Expandable content
+        // Expandable code view (only during streaming, no preview)
         AnimatedVisibility(
-            visible = expanded && hasHtml,
+            visible = expanded && isRunning && charCount > 0,
             enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
             exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
         ) {
@@ -1018,124 +1031,27 @@ private fun CanvasStreamCard(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (isRunning) {
-                    // ── Streaming: show live code ──
+                val scrollState = rememberScrollState()
+                LaunchedEffect(charCount) {
+                    scrollState.animateScrollTo(scrollState.maxValue)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 300.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.surface)
+                        .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .verticalScroll(scrollState)
+                        .padding(10.dp)
+                ) {
                     Text(
-                        text = "Live Code",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = palette.accent,
-                        modifier = Modifier.padding(horizontal = 2.dp)
+                        text = htmlContent,
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = palette.textPrimary.copy(alpha = 0.85f),
+                        lineHeight = 15.sp
                     )
-                    val scrollState = rememberScrollState()
-                    // Auto-scroll to bottom as new content arrives
-                    LaunchedEffect(charCount) {
-                        scrollState.animateScrollTo(scrollState.maxValue)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 300.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.surface)
-                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                            .verticalScroll(scrollState)
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            text = htmlContent,
-                            fontSize = 10.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = palette.textPrimary.copy(alpha = 0.85f),
-                            lineHeight = 15.sp
-                        )
-                    }
-                } else {
-                    // ── Completed: Code ⇔ Preview toggle ──
-                    Row(
-                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Code button
-                        Surface(
-                            color = if (!showPreview) palette.accent.copy(alpha = 0.15f)
-                                    else palette.surfaceContainer,
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.clickable { showPreview = false }
-                        ) {
-                            Text(
-                                "Code",
-                                fontSize = 11.sp,
-                                fontWeight = if (!showPreview) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (!showPreview) palette.accent else palette.textTertiary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-                        // Preview button
-                        Surface(
-                            color = if (showPreview) palette.accent.copy(alpha = 0.15f)
-                                    else palette.surfaceContainer,
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.clickable { showPreview = true }
-                        ) {
-                            Text(
-                                "Preview",
-                                fontSize = 11.sp,
-                                fontWeight = if (showPreview) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (showPreview) palette.accent else palette.textTertiary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    if (showPreview) {
-                        // WebView preview of final HTML
-                        androidx.compose.ui.viewinterop.AndroidView(
-                            factory = { ctx ->
-                                android.webkit.WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.useWideViewPort = true
-                                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                }
-                            },
-                            update = { webView ->
-                                webView.loadDataWithBaseURL(
-                                    null,
-                                    htmlContent,
-                                    "text/html",
-                                    "UTF-8",
-                                    null
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 200.dp, max = 400.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                        )
-                    } else {
-                        // Code view (monospace)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp, max = 300.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(palette.surface)
-                                .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                .verticalScroll(rememberScrollState())
-                                .padding(10.dp)
-                        ) {
-                            Text(
-                                text = htmlContent,
-                                fontSize = 10.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                color = palette.textPrimary.copy(alpha = 0.85f),
-                                lineHeight = 15.sp
-                            )
-                        }
-                    }
                 }
             }
         }
