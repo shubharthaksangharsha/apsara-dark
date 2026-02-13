@@ -25,7 +25,8 @@ object Routes {
 
 @Composable
 fun AppNavigation(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    startInLiveMode: Boolean = false
 ) {
     val context = LocalContext.current
     val liveSettings = LocalLiveSettings.current
@@ -52,6 +53,7 @@ fun AppNavigation(
             HomeScreen(
                 liveViewModel = liveViewModel,
                 openDrawerOnReturn = openDrawer,
+                startInLiveMode = startInLiveMode,
                 onNavigateToSettings = {
                     navController.navigate(Routes.SETTINGS)
                 },

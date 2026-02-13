@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     liveViewModel: LiveSessionViewModel,
     openDrawerOnReturn: Boolean = false,
+    startInLiveMode: Boolean = false,
     onNavigateToSettings: () -> Unit = {},
     onNavigateToPlugins: () -> Unit = {},
     onNavigateToCanvas: () -> Unit = {},
@@ -159,6 +160,13 @@ fun HomeScreen(
     LaunchedEffect(openDrawerOnReturn) {
         if (openDrawerOnReturn) {
             drawerState.open()
+        }
+    }
+
+    // Auto-start live mode when launched via ACTION_ASSIST (power button long-press)
+    LaunchedEffect(startInLiveMode) {
+        if (startInLiveMode && liveViewModel.liveState == LiveSessionViewModel.LiveState.IDLE) {
+            startLiveWithPermission()
         }
     }
 
