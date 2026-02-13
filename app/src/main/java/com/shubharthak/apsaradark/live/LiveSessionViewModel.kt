@@ -765,6 +765,13 @@ class LiveSessionViewModel(
     fun toggleMute() {
         audioManager.toggleMute()
         isMuted = audioManager.isMuted.value
+
+        // When muting: signal the backend that the audio stream has ended,
+        // so Gemini processes whatever audio was captured so far.
+        // When unmuting: the stream auto-reopens on the next audio chunk.
+        if (isMuted) {
+            wsClient.sendAudioStreamEnd()
+        }
     }
 
     fun sendText(text: String) {
