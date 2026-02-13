@@ -84,7 +84,7 @@ export class CanvasService {
    */
   async generateApp({ prompt, title, config = {}, onProgress }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
-    
+
     // Create the canvas entry
     const autoTitle = title || this._generateTitle(prompt);
     const canvas = canvasStore.create({
@@ -99,51 +99,57 @@ export class CanvasService {
     onProgress?.('generating', `Creating "${autoTitle}"...`);
 
     try {
-      // Generate the initial code
-      let html = await this._generate(prompt, mergedConfig);
-      canvasStore.update(canvas.id, { html, status: 'testing', attempts: 1 });
+      // Generate the initial code — capture interaction_id for multi-turn edits
+      const { html: generatedHtml, interactionId } = await this._generate(prompt, mergedConfig);
+      let html = generatedHtml;
+      canvasStore.update(canvas.id, { html, status: 'testing', attempts: 1, interaction_id: interactionId });
+      console.log(`[Canvas] Stored interaction_id: ${interactionId} for canvas ${canvas.id}`);
       onProgress?.('testing', 'Validating code...');
 
       // Validate and auto-fix loop
       const maxAttempts = 3;
       let attempt = 1;
+      let currentInteractionId = interactionId;
 
       while (attempt <= maxAttempts) {
         const errors = this._validateHtml(html);
-        
+
         if (errors.length === 0) {
           // No errors — mark as ready
-          canvasStore.update(canvas.id, { html, status: 'ready', error: null });
+          canvasStore.update(canvas.id, { html, status: 'ready', error: null, interaction_id: currentInteractionId });
           onProgress?.('ready', `"${autoTitle}" is ready!`);
           return canvasStore.get(canvas.id);
         }
 
         if (attempt >= maxAttempts) {
           // Max attempts reached — serve what we have with warning
-          canvasStore.update(canvas.id, { 
-            html, 
-            status: 'ready', 
-            error: `Validation warnings (served anyway): ${errors.join('; ')}` 
+          canvasStore.update(canvas.id, {
+            html,
+            status: 'ready',
+            error: `Validation warnings (served anyway): ${errors.join('; ')}`,
+            interaction_id: currentInteractionId
           });
           onProgress?.('ready', `"${autoTitle}" ready (with minor warnings)`);
           return canvasStore.get(canvas.id);
         }
 
-        // Try to fix
+        // Try to fix — chain via interaction_id for context
         attempt++;
         canvasStore.update(canvas.id, { status: 'fixing', attempts: attempt });
         onProgress?.('fixing', `Fixing issues (attempt ${attempt}/${maxAttempts})...`);
 
-        html = await this._fix(html, errors, prompt, mergedConfig);
-        canvasStore.update(canvas.id, { html });
+        const fixResult = await this._fix(html, errors, prompt, mergedConfig, currentInteractionId);
+        html = fixResult.html;
+        currentInteractionId = fixResult.interactionId || currentInteractionId;
+        canvasStore.update(canvas.id, { html, interaction_id: currentInteractionId });
       }
 
       return canvasStore.get(canvas.id);
     } catch (error) {
       console.error('[Canvas] Generation error:', error.message);
-      canvasStore.update(canvas.id, { 
-        status: 'error', 
-        error: error.message 
+      canvasStore.update(canvas.id, {
+        status: 'error',
+        error: error.message
       });
       onProgress?.('error', `Failed: ${error.message}`);
       return canvasStore.get(canvas.id);
@@ -163,7 +169,7 @@ export class CanvasService {
    */
   async editApp({ canvasId, instructions, config = {}, onProgress }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
-    
+
     // Get the existing canvas
     const existing = canvasStore.get(canvasId);
     if (!existing) {
@@ -174,18 +180,48 @@ export class CanvasService {
 
     // Log the edit start — also update prompt to include edit instructions
     const updatedPrompt = `${existing.prompt}\n\n[Edit: ${instructions}]`;
-    
+
     // Generate a new title that reflects the edit instructions
     const newTitle = this._generateEditTitle(existing.title, instructions);
-    canvasStore.update(canvasId, { status: 'generating', prompt: updatedPrompt, title: newTitle, config_used: mergedConfig });
+
+    // Track edit history for context
+    const editHistory = existing.edit_history || [];
+    editHistory.push({
+      instructions,
+      timestamp: new Date().toISOString(),
+      previous_interaction_id: existing.interaction_id || null,
+    });
+
+    canvasStore.update(canvasId, {
+      status: 'generating',
+      prompt: updatedPrompt,
+      title: newTitle,
+      config_used: mergedConfig,
+      edit_history: editHistory,
+    });
+
+    // Determine if we can use multi-turn context
+    const previousInteractionId = existing.interaction_id || null;
+    const isMultiTurn = !!previousInteractionId;
+    console.log(`[Canvas] Edit mode: ${isMultiTurn ? 'MULTI-TURN (chaining from ' + previousInteractionId + ')' : 'SINGLE-TURN (no previous interaction)'}`);
 
     try {
-      // Build the edit prompt with full context
-      const editPrompt = this._buildEditPrompt(existing, instructions);
+      let html, interactionId;
 
-      // Generate the updated code
-      let html = await this._generate(editPrompt, mergedConfig);
-      
+      if (isMultiTurn) {
+        // Multi-turn: send only the edit instructions, Gemini has full context
+        const editOnlyPrompt = `The user wants the following changes to the app:\n${instructions}\n\nApply the requested changes. Keep everything that works well, and only change/add/remove what's needed. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`;
+        const result = await this._generate(editOnlyPrompt, mergedConfig, previousInteractionId);
+        html = result.html;
+        interactionId = result.interactionId;
+      } else {
+        // Single-turn fallback: send full code + instructions (old behavior)
+        const editPrompt = this._buildEditPrompt(existing, instructions);
+        const result = await this._generate(editPrompt, mergedConfig);
+        html = result.html;
+        interactionId = result.interactionId;
+      }
+
       // Try to extract a better title from the generated HTML's <title> tag
       const htmlTitleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       if (htmlTitleMatch && htmlTitleMatch[1]) {
@@ -195,12 +231,13 @@ export class CanvasService {
           canvasStore.update(canvasId, { title: htmlTitle });
         }
       }
-      
-      canvasStore.update(canvasId, { html, status: 'testing', attempts: (existing.attempts || 0) + 1 });
+
+      canvasStore.update(canvasId, { html, status: 'testing', attempts: (existing.attempts || 0) + 1, interaction_id: interactionId });
       onProgress?.('testing', 'Validating edited code...');
 
       // Get the final title (may have been updated from HTML)
       const finalTitle = canvasStore.get(canvasId)?.title || newTitle;
+      let currentInteractionId = interactionId;
 
       // Validate and auto-fix loop
       const maxAttempts = 3;
@@ -208,18 +245,19 @@ export class CanvasService {
 
       while (attempt <= maxAttempts) {
         const errors = this._validateHtml(html);
-        
+
         if (errors.length === 0) {
-          canvasStore.update(canvasId, { html, status: 'ready', error: null });
+          canvasStore.update(canvasId, { html, status: 'ready', error: null, interaction_id: currentInteractionId });
           onProgress?.('ready', `"${finalTitle}" has been updated!`);
           return canvasStore.get(canvasId);
         }
 
         if (attempt >= maxAttempts) {
-          canvasStore.update(canvasId, { 
-            html, 
-            status: 'ready', 
-            error: `Validation warnings after edit (served anyway): ${errors.join('; ')}` 
+          canvasStore.update(canvasId, {
+            html,
+            status: 'ready',
+            error: `Validation warnings after edit (served anyway): ${errors.join('; ')}`,
+            interaction_id: currentInteractionId
           });
           onProgress?.('ready', `"${finalTitle}" updated (with minor warnings)`);
           return canvasStore.get(canvasId);
@@ -229,16 +267,25 @@ export class CanvasService {
         canvasStore.update(canvasId, { status: 'fixing', attempts: (existing.attempts || 0) + attempt });
         onProgress?.('fixing', `Fixing issues (attempt ${attempt}/${maxAttempts})...`);
 
-        html = await this._fix(html, errors, existing.prompt + '\n\nEdit: ' + instructions, mergedConfig);
-        canvasStore.update(canvasId, { html });
+        const fixResult = await this._fix(html, errors, existing.prompt + '\n\nEdit: ' + instructions, mergedConfig, currentInteractionId);
+        html = fixResult.html;
+        currentInteractionId = fixResult.interactionId || currentInteractionId;
+        canvasStore.update(canvasId, { html, interaction_id: currentInteractionId });
       }
 
       return canvasStore.get(canvasId);
     } catch (error) {
       console.error('[Canvas] Edit error:', error.message);
-      canvasStore.update(canvasId, { 
-        status: 'error', 
-        error: error.message 
+
+      // If multi-turn failed, log it — the next edit will fall back to single-turn
+      if (isMultiTurn) {
+        console.warn('[Canvas] Multi-turn edit failed, interaction chain may have expired. Next edit will use single-turn.');
+        canvasStore.update(canvasId, { interaction_id: null });
+      }
+
+      canvasStore.update(canvasId, {
+        status: 'error',
+        error: error.message
       });
       onProgress?.('error', `Edit failed: ${error.message}`);
       return canvasStore.get(canvasId);
@@ -251,28 +298,37 @@ export class CanvasService {
    */
   _buildEditPrompt(existingApp, instructions) {
     const parts = [];
-    
+
     parts.push(`You previously built this web app titled "${existingApp.title}".`);
-    
+
     if (existingApp.prompt) {
       parts.push(`\nOriginal request: "${existingApp.prompt}"`);
     }
-    
+
     if (existingApp.html) {
       parts.push(`\nHere is the CURRENT complete code of the app:\n\`\`\`html\n${existingApp.html}\n\`\`\``);
     }
-    
+
     parts.push(`\nThe user wants the following changes:\n${instructions}`);
     parts.push(`\nApply the requested changes to the existing code. Keep everything that works well, and only change/add/remove what's needed to fulfill the edit request. If the edit fundamentally changes the app's purpose or type, update the <title> tag accordingly. Output the COMPLETE updated HTML file — no partial code, no placeholders. Start with <!DOCTYPE html> and end with </html>.`);
-    
+
     return parts.join('\n');
   }
 
   /**
-   * Generate HTML using the Interactions API (streaming, collected).
-   */
-  async _generate(prompt, config) {
+ * Generate HTML using the Interactions API.
+ * Supports multi-turn via optional previousInteractionId.
+ * 
+ * @param {string} prompt - The generation prompt
+ * @param {Object} config - Generation config
+ * @param {string} [previousInteractionId] - Chain to a previous interaction for multi-turn context
+ * @returns {Promise<{html: string, interactionId: string}>} Generated HTML and interaction ID
+ */
+  async _generate(prompt, config, previousInteractionId = null) {
     console.log('[Canvas] Generating app for prompt:', prompt.substring(0, 100));
+    if (previousInteractionId) {
+      console.log('[Canvas] Chaining from previous interaction:', previousInteractionId);
+    }
 
     const request = {
       model: config.model || CANVAS_DEFAULTS.model,
@@ -286,8 +342,13 @@ export class CanvasService {
       },
     };
 
+    // Multi-turn: chain to previous interaction for conversation context
+    if (previousInteractionId) {
+      request.previous_interaction_id = previousInteractionId;
+    }
+
     const interaction = await this.client.interactions.create(request);
-    
+
     // Extract text from outputs
     const textOutputs = interaction.outputs?.filter(o => o.type === 'text') || [];
     let html = textOutputs.map(o => o.text).join('');
@@ -295,13 +356,16 @@ export class CanvasService {
     // Clean up — strip markdown fences if present
     html = this._cleanHtml(html);
 
-    return html;
+    return { html, interactionId: interaction.id || null };
   }
 
   /**
-   * Fix HTML errors using the Interactions API.
-   */
-  async _fix(html, errors, originalPrompt, config) {
+ * Fix HTML errors using the Interactions API.
+ * Chains via previousInteractionId when available for contextual fixes.
+ * 
+ * @returns {Promise<{html: string, interactionId: string}>} Fixed HTML and interaction ID
+ */
+  async _fix(html, errors, originalPrompt, config, previousInteractionId = null) {
     console.log('[Canvas] Fixing errors:', errors);
 
     const fixPrompt = `The following HTML app was generated for this request: "${originalPrompt}"
@@ -327,12 +391,17 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
       },
     };
 
+    // Chain to previous interaction for context
+    if (previousInteractionId) {
+      request.previous_interaction_id = previousInteractionId;
+    }
+
     const interaction = await this.client.interactions.create(request);
     const textOutputs = interaction.outputs?.filter(o => o.type === 'text') || [];
     let fixed = textOutputs.map(o => o.text).join('');
     fixed = this._cleanHtml(fixed);
 
-    return fixed;
+    return { html: fixed, interactionId: interaction.id || null };
   }
 
   /**
@@ -342,7 +411,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
   async *generateAppStream({ prompt, title, config = {} }) {
     const mergedConfig = { ...CANVAS_DEFAULTS, ...config };
     const autoTitle = title || this._generateTitle(prompt);
-    
+
     const canvas = canvasStore.create({
       title: autoTitle,
       description: prompt,
@@ -402,7 +471,8 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
         canvasStore.update(canvas.id, { status: 'fixing', attempts: attempt });
         yield { event: 'canvas.status', status: 'fixing', message: `Fixing (attempt ${attempt}/3)...` };
 
-        html = await this._fix(html, errors, prompt, mergedConfig);
+        const fixResult = await this._fix(html, errors, prompt, mergedConfig);
+        html = fixResult.html;
         canvasStore.update(canvas.id, { html });
 
         const newErrors = this._validateHtml(html);
@@ -490,7 +560,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
   _generateTitle(prompt) {
     if (!prompt) return 'Untitled App';
     // Take first 40 chars, cut at word boundary
-    const truncated = prompt.length > 40 
+    const truncated = prompt.length > 40
       ? prompt.substring(0, 40).replace(/\s+\S*$/, '') + '…'
       : prompt;
     return truncated.charAt(0).toUpperCase() + truncated.slice(1);
@@ -503,7 +573,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
    */
   _generateEditTitle(existingTitle, instructions) {
     if (!instructions) return existingTitle;
-    
+
     // Check if instructions explicitly mention making it into something new
     // e.g., "make it a reminder app", "convert to a calculator", "change to a todo list"
     const transformPatterns = [
@@ -511,7 +581,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
       /(?:make|create|build)\s+(?:it|this)\s+a\s+(.+?)(?:\s+app)?$/i,
       /(?:rename|retitle)\s+(?:it|this)?\s*(?:to|as)\s+["']?(.+?)["']?$/i,
     ];
-    
+
     for (const pattern of transformPatterns) {
       const match = instructions.match(pattern);
       if (match && match[1]) {
@@ -521,7 +591,7 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
         return titled.endsWith('App') ? titled : `${titled} App`;
       }
     }
-    
+
     // Otherwise, generate title from the instructions
     const title = this._generateTitle(instructions);
     // If the generated title is too similar to instructions being just a verb phrase,
