@@ -91,21 +91,24 @@ export class GeminiLiveSession {
       config.proactivity = { proactiveAudio: true };
     }
 
-    // Thinking — per Gemini docs, includeThoughts goes INSIDE thinkingConfig.
-    // When includeThoughts is OFF, disable thinking entirely (thinkingBudget: 0).
-    // When includeThoughts is ON, use dynamic thinking + thought summaries.
-    if (this.config.includeThoughts) {
+    // Thinking — native audio models don't support thinkingConfig.
+    // Only apply for non-native-audio models (e.g. gemini-2.5-flash, gemini-2.5-pro).
+    const isNativeAudioModel = (this.config.model || '').includes('native-audio');
+    if (isNativeAudioModel) {
+      console.log('[GeminiLive] Native audio model detected — thinkingConfig not supported, skipping');
+    } else if (this.config.includeThoughts) {
       // Thoughts ON: use configured budget (or dynamic if null) + enable summaries
       const thinkingConfig = { includeThoughts: true };
       if (this.config.thinkingBudget !== null && this.config.thinkingBudget !== undefined) {
         thinkingConfig.thinkingBudget = this.config.thinkingBudget;
       }
       config.thinkingConfig = thinkingConfig;
+      console.log('[GeminiLive] Thinking: ON |', JSON.stringify(config.thinkingConfig));
     } else {
       // Thoughts OFF: fully disable thinking by setting budget to 0
       config.thinkingConfig = { thinkingBudget: 0 };
+      console.log('[GeminiLive] Thinking: OFF | thinkingBudget: 0');
     }
-    console.log(`[GeminiLive] 🧠 Thinking: ${this.config.includeThoughts ? 'ON' : 'OFF'} | thinkingConfig:`, JSON.stringify(config.thinkingConfig));
 
     // Input audio transcription — only for AUDIO modality (requires audio input)
     if (isAudioModality && this.config.inputAudioTranscription) {
@@ -264,11 +267,6 @@ export class GeminiLiveSession {
       // Model turn — audio + text parts
       if (sc.modelTurn && sc.modelTurn.parts) {
         for (const part of sc.modelTurn.parts) {
-          // Debug: log part keys to find thought structure
-          if (part.text) {
-            console.log(`[GeminiLive] 📝 Part with text — keys: [${Object.keys(part).join(', ')}] | thought=${part.thought} | text preview: "${part.text.substring(0, 80)}"`);
-          }
-
           // Audio data
           if (part.inlineData && part.inlineData.data) {
             this.callbacks.onAudioData?.({
@@ -277,10 +275,9 @@ export class GeminiLiveSession {
             });
           }
 
-          // Text data — check if this is a thought
+          // Text data — thought summaries have part.thought = true
           if (part.text) {
             if (part.thought) {
-              // Thought part detected
               this.callbacks.onThought?.({ text: part.text });
             } else {
               this.callbacks.onTextData?.({ text: part.text });
@@ -297,11 +294,6 @@ export class GeminiLiveSession {
             this.callbacks.onCodeExecutionResult?.({ output: part.codeExecutionResult.output });
           }
         }
-      }
-
-      // Check for thought summaries outside modelTurn (alternative Gemini format)
-      if (sc.groundingMetadata || sc.thoughtSummary || sc.thoughtSummaries) {
-        console.log(`[GeminiLive] 🧠 Non-modelTurn thought fields — keys: [${Object.keys(sc).join(', ')}]`);
       }
 
       // Input transcription

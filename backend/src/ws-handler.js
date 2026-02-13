@@ -105,7 +105,6 @@ export function handleWebSocket(ws, apiKey) {
         send({ type: 'text', text });
       },
       onThought: ({ text }) => {
-        console.log(`[WS] 🧠 Thought received (${text ? text.length : 0} chars):`, text ? text.substring(0, 200) : '(empty)');
         send({ type: 'thought', text });
       },
       onInputTranscription: ({ text }) => {
