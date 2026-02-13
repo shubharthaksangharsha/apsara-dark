@@ -91,14 +91,19 @@ export class GeminiLiveSession {
       config.proactivity = { proactiveAudio: true };
     }
 
-    // Thinking
-    if (this.config.thinkingBudget !== null && this.config.thinkingBudget !== undefined) {
-      config.thinkingConfig = { thinkingBudget: this.config.thinkingBudget };
-    }
-
-    // Thought summaries
+    // Thinking — per Gemini docs, includeThoughts goes INSIDE thinkingConfig.
+    // When includeThoughts is OFF, disable thinking entirely (thinkingBudget: 0).
+    // When includeThoughts is ON, use dynamic thinking + thought summaries.
     if (this.config.includeThoughts) {
-      config.includeThoughts = true;
+      // Thoughts ON: use configured budget (or dynamic if null) + enable summaries
+      const thinkingConfig = { includeThoughts: true };
+      if (this.config.thinkingBudget !== null && this.config.thinkingBudget !== undefined) {
+        thinkingConfig.thinkingBudget = this.config.thinkingBudget;
+      }
+      config.thinkingConfig = thinkingConfig;
+    } else {
+      // Thoughts OFF: fully disable thinking by setting budget to 0
+      config.thinkingConfig = { thinkingBudget: 0 };
     }
 
     // Input audio transcription — only for AUDIO modality (requires audio input)
