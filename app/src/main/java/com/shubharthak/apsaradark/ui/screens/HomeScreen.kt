@@ -1091,15 +1091,20 @@ private fun CanvasStreamCard(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         thoughts.forEach { entry ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(2.dp)
-                                        .heightIn(min = 16.dp)
-                                        .background(palette.accent.copy(alpha = 0.5f))
-                                )
-                                Column(modifier = Modifier.padding(start = 8.dp)) {
-                                    if (entry.title.isNotBlank()) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Title with accent bar
+                                if (entry.title.isNotBlank()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(2.dp)
+                                                .height(14.dp)
+                                                .background(palette.accent.copy(alpha = 0.8f), RoundedCornerShape(1.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = entry.title,
                                             fontSize = 11.sp,
@@ -1108,16 +1113,19 @@ private fun CanvasStreamCard(
                                             lineHeight = 15.sp
                                         )
                                     }
-                                    if (entry.body.isNotBlank()) {
-                                        Text(
-                                            text = entry.body.trim(),
-                                            fontSize = 10.sp,
-                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                            color = palette.textTertiary,
-                                            lineHeight = 14.sp
-                                        )
-                                    }
                                 }
+                                // Body text indented below
+                                if (entry.body.isNotBlank()) {
+                                    Text(
+                                        text = entry.body.trim(),
+                                        fontSize = 10.sp,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = palette.textTertiary,
+                                        lineHeight = 14.sp,
+                                        modifier = Modifier.padding(start = 10.dp, top = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
