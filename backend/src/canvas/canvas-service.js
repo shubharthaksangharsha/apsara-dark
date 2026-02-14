@@ -428,11 +428,6 @@ export class CanvasService {
     const stream = await this.client.interactions.create(request);
 
     for await (const chunk of stream) {
-      // ── Detailed logging for every chunk from Interactions API ──
-      const eventType = chunk.event_type;
-      const contentType = chunk.content?.type || chunk.delta?.type || 'unknown';
-      console.log(`[Canvas][Stream] event=${eventType} contentType=${contentType}`, JSON.stringify(chunk).substring(0, 300));
-
       if (chunk.event_type === 'content.delta') {
         if (chunk.delta?.type === 'text' && chunk.delta.text) {
           html += chunk.delta.text;
@@ -441,30 +436,25 @@ export class CanvasService {
           onThought?.(chunk.delta.thought);
         } else if (chunk.delta?.type === 'thought_summary' && chunk.delta.content?.text) {
           onThought?.(chunk.delta.content.text);
-        } else {
-          console.log(`[Canvas][Stream] Unhandled content.delta type: ${chunk.delta?.type}`, (JSON.stringify(chunk.delta) || '').substring(0, 200));
+        } else if (chunk.delta?.type !== 'thought_signature') {
+          // Ignore thought_signature (internal API), log anything else unexpected
+          console.log(`[Canvas][Stream] Unhandled delta type: ${chunk.delta?.type}`);
         }
       } else if (chunk.event_type === 'content.start') {
         const cType = chunk.content?.type;
-        console.log(`[Canvas][Stream] content.start: type=${cType}`, (JSON.stringify(chunk.content) || '').substring(0, 300));
         if (cType === 'thought_summary') {
-          // New thought summary block — notify start
           onThoughtStart?.();
         } else if (cType && cType !== 'text' && cType !== 'thought') {
-          // Built-in tool starts (url_context etc.) — log only
           console.log(`[Canvas][Stream] Built-in tool START: ${cType}`);
         }
       } else if (chunk.event_type === 'content.stop') {
         const cType = chunk.content?.type;
-        console.log(`[Canvas][Stream] content.stop: type=${cType}`, (JSON.stringify(chunk.content) || '').substring(0, 200));
         if (cType && cType !== 'text' && cType !== 'thought' && cType !== 'thought_summary') {
           console.log(`[Canvas][Stream] Built-in tool STOP: ${cType}`);
         }
       } else if (chunk.event_type === 'interaction.complete') {
         interactionId = chunk.interaction?.id || null;
         console.log(`[Canvas][Stream] Interaction complete: id=${interactionId}`);
-      } else {
-        console.log(`[Canvas][Stream] Other event: ${eventType}`, JSON.stringify(chunk).substring(0, 200));
       }
     }
 

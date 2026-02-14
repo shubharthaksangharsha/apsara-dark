@@ -720,11 +720,34 @@ class LiveSessionViewModel(
                     "delta" -> {
                         if (thoughts.isEmpty()) thoughts.add(CanvasThoughtEntry())
                         val last = thoughts.last()
-                        val fullText = (if (last.title.isNotEmpty()) last.title + "\n" + last.body else last.body) + event.text
-                        val lines = fullText.trimStart().split("\n", limit = 2)
-                        val newTitle = lines.firstOrNull()?.trim()?.replace("**", "") ?: ""
-                        val newBody = if (lines.size > 1) lines[1].replace("**", "") else ""
-                        thoughts[thoughts.lastIndex] = last.copy(title = newTitle, body = newBody)
+                        // Reconstruct full raw text for current thought block
+                        val rawPrev = if (last.title.isNotEmpty()) "**${last.title}**\n${last.body}" else last.body
+                        val fullText = (rawPrev + event.text).trimStart()
+
+                        // Split into sections by **heading** pattern  
+                        // Each section starts with **title** followed by body text
+                        val headingPattern = Regex("(?=\\*\\*[^*]+\\*\\*)")
+                        val sections = fullText.split(headingPattern).filter { it.isNotBlank() }
+
+                        // Find where current block's entries start in the list
+                        // (entries before were from previous thought blocks)
+                        val blockStartIdx = if (thoughts.size > 1) {
+                            // Remove the last entry (being rebuilt) and keep prior entries
+                            thoughts.removeAt(thoughts.lastIndex)
+                            thoughts.size
+                        } else {
+                            thoughts.clear()
+                            0
+                        }
+
+                        for (section in sections) {
+                            val lines = section.trimStart().split("\n", limit = 2)
+                            val rawTitle = lines.firstOrNull()?.trim() ?: ""
+                            val title = rawTitle.replace("**", "")
+                            val body = if (lines.size > 1) lines[1] else ""
+                            thoughts.add(CanvasThoughtEntry(title = title, body = body))
+                        }
+                        if (thoughts.isEmpty()) thoughts.add(CanvasThoughtEntry())
                     }
                 }
                 return tc.copy(canvasThoughts = thoughts)

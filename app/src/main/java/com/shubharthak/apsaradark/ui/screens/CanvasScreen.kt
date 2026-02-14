@@ -1322,52 +1322,40 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                 )
             }
 
-            // ── Collapsible config section ──
+            // ── Collapsible config section — inline under prompt card ──
             if (!detail.configUsed.isNullOrEmpty()) {
-                val configLabels = mapOf(
-                    "model" to "Model",
-                    "max_output_tokens" to "Max Output Tokens",
-                    "thinking_level" to "Thinking Level",
-                    "thinking_summaries" to "Thinking Summaries",
-                    "temperature" to "Temperature"
-                )
-                var configExpanded by remember { mutableStateOf(false) }
-
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     color = palette.surfaceContainer,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { configExpanded = !configExpanded }
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        var configExpanded by remember { mutableStateOf(false) }
+                        HorizontalDivider(
+                            color = palette.textTertiary.copy(alpha = 0.1f),
+                            thickness = 0.5.dp
+                        )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { configExpanded = !configExpanded }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Outlined.Info,
-                                    contentDescription = null,
-                                    tint = palette.textTertiary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Generation Config",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = palette.textTertiary
-                                )
-                            }
                             Icon(
-                                if (configExpanded) Icons.Outlined.ExpandLess
-                                else Icons.Outlined.ExpandMore,
-                                contentDescription = if (configExpanded) "Collapse" else "Expand",
+                                Icons.Outlined.Info,
+                                contentDescription = "Config",
                                 tint = palette.textTertiary,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = if (configExpanded) "▾ Generation Config" else "▸ Generation Config",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = palette.textTertiary
                             )
                         }
                         AnimatedVisibility(
@@ -1375,9 +1363,16 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                             enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
                             exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
                         ) {
+                            val configLabels = mapOf(
+                                "model" to "Model",
+                                "max_output_tokens" to "Max Tokens",
+                                "thinking_level" to "Thinking",
+                                "thinking_summaries" to "Summaries",
+                                "temperature" to "Temperature"
+                            )
                             Column(
-                                modifier = Modifier.padding(top = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                modifier = Modifier.padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 detail.configUsed!!.forEach { (key, value) ->
                                     val label = configLabels[key] ?: key.replaceFirstChar { it.uppercase() }
@@ -1385,10 +1380,10 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(label, fontSize = 11.sp, color = palette.textTertiary)
+                                        Text(label, fontSize = 10.sp, color = palette.textTertiary)
                                         Text(
                                             value,
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace,
                                             color = palette.accent
                                         )
