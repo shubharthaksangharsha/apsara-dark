@@ -202,8 +202,7 @@ export function handleWebSocket(ws, apiKey) {
                     send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                   };
                   const toolStatusCb = (status, toolType) => {
-                    const msg = status === 'executing' ? `Using ${toolType}…` : `${toolType} done`;
-                    send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'tool_call', message: msg });
+                    send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
                   };
                   result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
                 } else {
@@ -218,8 +217,7 @@ export function handleWebSocket(ws, apiKey) {
                     send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                   };
                   const toolStatusCb = (status, toolType) => {
-                    const msg = status === 'executing' ? `Using ${toolType}…` : `${toolType} done`;
-                    send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'tool_call', message: msg });
+                    send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
                   };
                   result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
                 }
@@ -280,8 +278,7 @@ export function handleWebSocket(ws, apiKey) {
                       send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                     };
                     const toolStatusCb = (status, toolType) => {
-                      const msg = status === 'executing' ? `Using ${toolType}…` : `${toolType} done`;
-                      send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'tool_call', message: msg });
+                      send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
                     };
                     result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
                   } else {
@@ -296,8 +293,7 @@ export function handleWebSocket(ws, apiKey) {
                       send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                     };
                     const toolStatusCb = (status, toolType) => {
-                      const msg = status === 'executing' ? `Using ${toolType}…` : `${toolType} done`;
-                      send({ type: 'canvas_progress', tool_call_id: fc.id, status: 'tool_call', message: msg });
+                      send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
                     };
                     result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
                   }

@@ -210,6 +210,7 @@ export class CanvasService {
       instructions,
       timestamp: new Date().toISOString(),
       previous_interaction_id: existing.interaction_id || null,
+      config_used: mergedConfig,
     });
 
     canvasStore.update(canvasId, {

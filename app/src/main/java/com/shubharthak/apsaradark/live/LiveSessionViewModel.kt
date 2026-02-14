@@ -60,7 +60,9 @@ data class EmbeddedToolCall(
     val canvasId: String? = null,
     val canvasRenderUrl: String? = null,
     // Canvas thought summaries: list of titled entries streamed during generation
-    val canvasThoughts: List<CanvasThoughtEntry> = emptyList()
+    val canvasThoughts: List<CanvasThoughtEntry> = emptyList(),
+    // Canvas sub-tool calls: built-in tools (url_context etc.) invoked during canvas generation
+    val canvasSubToolCalls: List<CanvasSubToolCall> = emptyList()
 )
 
 /**
@@ -69,6 +71,14 @@ data class EmbeddedToolCall(
 data class CanvasThoughtEntry(
     val title: String = "",
     val body: String = ""
+)
+
+/**
+ * A sub-tool call made during canvas generation (e.g. url_context).
+ */
+data class CanvasSubToolCall(
+    val toolType: String,
+    val isRunning: Boolean = true
 )
 
 /**
@@ -722,8 +732,8 @@ class LiveSessionViewModel(
                         val last = thoughts.last()
                         val fullText = (if (last.title.isNotEmpty()) last.title + "\n" + last.body else last.body) + event.text
                         val lines = fullText.trimStart().split("\n", limit = 2)
-                        val newTitle = lines.firstOrNull()?.trim() ?: ""
-                        val newBody = if (lines.size > 1) lines[1] else ""
+                        val newTitle = lines.firstOrNull()?.trim()?.replace("**", "") ?: ""
+                        val newBody = if (lines.size > 1) lines[1].replace("**", "") else ""
                         thoughts[thoughts.lastIndex] = last.copy(title = newTitle, body = newBody)
                     }
                 }
@@ -744,6 +754,39 @@ class LiveSessionViewModel(
             val pendingIdx = pendingToolCalls.indexOfFirst { it.id == event.toolCallId && it.name in canvasTools }
             if (pendingIdx >= 0) {
                 pendingToolCalls[pendingIdx] = updateThoughts(pendingToolCalls[pendingIdx])
+            }
+        }.launchIn(viewModelScope)
+
+        // Canvas sub-tool call — track built-in tools used during canvas generation
+        wsClient.canvasToolCall.onEach { event ->
+            Log.d(TAG, "Canvas tool call: action=${event.action}, toolType=${event.toolType}")
+            val canvasTools = setOf("apsara_canvas", "edit_canvas")
+
+            fun updateSubTools(tc: EmbeddedToolCall): EmbeddedToolCall {
+                if (tc.id != event.toolCallId || tc.name !in canvasTools) return tc
+                val subTools = tc.canvasSubToolCalls.toMutableList()
+                when (event.action) {
+                    "start" -> subTools.add(CanvasSubToolCall(event.toolType, isRunning = true))
+                    "stop" -> {
+                        val stIdx = subTools.indexOfLast { it.toolType == event.toolType && it.isRunning }
+                        if (stIdx >= 0) subTools[stIdx] = subTools[stIdx].copy(isRunning = false)
+                    }
+                }
+                return tc.copy(canvasSubToolCalls = subTools)
+            }
+
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.id == event.toolCallId && tc.name in canvasTools }
+            }
+            if (idx >= 0) {
+                messages[idx] = messages[idx].copy(
+                    toolCalls = messages[idx].toolCalls.map { updateSubTools(it) }
+                )
+            }
+            val pendingIdx = pendingToolCalls.indexOfFirst { it.id == event.toolCallId && it.name in canvasTools }
+            if (pendingIdx >= 0) {
+                pendingToolCalls[pendingIdx] = updateSubTools(pendingToolCalls[pendingIdx])
             }
         }.launchIn(viewModelScope)
 

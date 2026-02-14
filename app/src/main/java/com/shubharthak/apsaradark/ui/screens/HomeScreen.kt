@@ -35,7 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
@@ -732,7 +735,24 @@ private fun ApsaraBubble(
                 exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
             ) {
                 Text(
-                    text = thought,
+                    text = buildAnnotatedString {
+                        val raw = thought ?: ""
+                        val boldPattern = Regex("""\*\*(.+?)\*\*""")
+                        var lastEnd = 0
+                        for (match in boldPattern.findAll(raw)) {
+                            // append text before the match
+                            append(raw.substring(lastEnd, match.range.first))
+                            // append the matched text as bold
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = palette.textSecondary)) {
+                                append(match.groupValues[1])
+                            }
+                            lastEnd = match.range.last + 1
+                        }
+                        // append remaining text
+                        if (lastEnd < raw.length) {
+                            append(raw.substring(lastEnd))
+                        }
+                    },
                     fontSize = 13.sp,
                     color = palette.textTertiary,
                     lineHeight = 19.sp,
@@ -1002,7 +1022,7 @@ private fun CanvasStreamCard(
                     if (charCount > 0) {
                         "Generating… ${charCount.formatChars()}"
                     } else if (hasThoughts) {
-                        thoughts.last().title.ifBlank { "Thinking…" }
+                        thoughts.last().title.replace("**", "").ifBlank { "Thinking…" }
                     } else if (progressText.isNotBlank()) {
                         progressText
                     } else {
@@ -1053,6 +1073,44 @@ private fun CanvasStreamCard(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                // Show sub-tool call mini cards (url_context etc.)
+                val subTools = toolCall.canvasSubToolCalls
+                if (subTools.isNotEmpty()) {
+                    subTools.forEach { subTool ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.surface)
+                                .border(0.5.dp, palette.textTertiary.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (subTool.isRunning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    color = palette.accent,
+                                    strokeWidth = 1.5.dp
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Outlined.CheckCircle,
+                                    contentDescription = "Done",
+                                    tint = palette.accent,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                            Text(
+                                text = subTool.toolType.replace("_", " ").replaceFirstChar { it.uppercase() },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (subTool.isRunning) palette.textSecondary else palette.textTertiary
+                            )
+                        }
+                    }
+                }
+
                 // Show thought summaries if available
                 if (hasThoughts) {
                     val thoughtScrollState = rememberScrollState()

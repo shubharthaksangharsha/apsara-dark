@@ -885,7 +885,12 @@ private fun CanvasDetailViewer(
                         editEntries.add(
                             CanvasEditEntry(
                                 instructions = entry.optString("instructions", ""),
-                                timestamp = entry.optString("timestamp", "")
+                                timestamp = entry.optString("timestamp", ""),
+                                configUsed = entry.optJSONObject("config_used")?.let { cfg ->
+                                    val map = mutableMapOf<String, String>()
+                                    cfg.keys().forEach { key -> map[key] = cfg.optString(key, "") }
+                                    map.ifEmpty { null }
+                                }
                             )
                         )
                     }
@@ -1479,6 +1484,37 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                                         color = palette.textPrimary,
                                         lineHeight = 22.sp
                                     )
+                                    // Per-edit config
+                                    if (!edit.configUsed.isNullOrEmpty()) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        val editConfigLabels = mapOf(
+                                            "model" to "Model",
+                                            "max_output_tokens" to "Max Tokens",
+                                            "thinking_level" to "Thinking",
+                                            "temperature" to "Temperature",
+                                            "thinking_summaries" to "Summaries"
+                                        )
+                                        HorizontalDivider(
+                                            color = palette.textTertiary.copy(alpha = 0.1f),
+                                            thickness = 0.5.dp
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        edit.configUsed!!.forEach { (key, value) ->
+                                            val label = editConfigLabels[key] ?: key.replaceFirstChar { it.uppercase() }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(label, fontSize = 10.sp, color = palette.textTertiary)
+                                                Text(
+                                                    value,
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = palette.accent
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

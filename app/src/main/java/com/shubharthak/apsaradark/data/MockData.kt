@@ -56,7 +56,8 @@ data class CanvasAppDetail(
 
 data class CanvasEditEntry(
     val instructions: String,
-    val timestamp: String = ""
+    val timestamp: String = "",
+    val configUsed: Map<String, String>? = null
 )
 
 data class CanvasVersion(
