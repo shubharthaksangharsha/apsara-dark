@@ -932,7 +932,19 @@ private fun CanvasStreamCard(
     val htmlContent = toolCall.codeOutput ?: ""
     val progressText = toolCall.codeBlock ?: ""
     val charCount = htmlContent.length
-    val canvasId = toolCall.canvasId
+    val thoughts = toolCall.canvasThoughts
+    val hasThoughts = thoughts.isNotEmpty()
+
+    // Fallback: extract canvasId from result JSON if not set on the toolCall directly
+    val canvasId = toolCall.canvasId ?: run {
+        if (isCompleted && toolCall.result != null) {
+            try {
+                val json = org.json.JSONObject(toolCall.result!!)
+                val resp = if (json.has("response")) json.getJSONObject("response") else json
+                resp.optString("canvas_id", "").ifEmpty { null }
+            } catch (_: Exception) { null }
+        } else null
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -950,13 +962,10 @@ private fun CanvasStreamCard(
                 )
                 .clickable {
                     if (isCompleted && charCount > 0) {
-                        // Card has streamed code — toggle to show completed code
                         expanded = !expanded
                     } else if (isCompleted && canvasId != null) {
-                        // No streamed code — navigate to canvas
                         onNavigateToCanvasApp(canvasId)
                     } else if (isRunning) {
-                        // Toggle code view during streaming
                         expanded = !expanded
                     }
                 }
@@ -988,28 +997,34 @@ private fun CanvasStreamCard(
                     fontWeight = FontWeight.Medium,
                     color = palette.textPrimary
                 )
-                Text(
-                    text = if (isRunning) {
-                        if (progressText.isNotBlank()) progressText
-                        else if (charCount > 0) "Generating… ${charCount.formatChars()}"
-                        else "Starting…"
+                // Subtitle: show latest thought title (bold) while running, or status text
+                val subtitleText = if (isRunning) {
+                    if (charCount > 0) {
+                        "Generating… ${charCount.formatChars()}"
+                    } else if (hasThoughts) {
+                        thoughts.last().title.ifBlank { "Thinking…" }
+                    } else if (progressText.isNotBlank()) {
+                        progressText
                     } else {
-                        buildString {
-                            append("Ready")
-                            if (charCount > 0) append(" · ${charCount.formatChars()}")
-                        }
-                    },
+                        "Starting…"
+                    }
+                } else {
+                    buildString {
+                        append("Ready")
+                        if (charCount > 0) append(" · ${charCount.formatChars()}")
+                    }
+                }
+                Text(
+                    text = subtitleText,
                     fontSize = 11.sp,
-                    fontStyle = if (isRunning && progressText.isNotBlank() && charCount == 0)
-                        androidx.compose.ui.text.font.FontStyle.Italic
-                    else null,
-                    color = palette.textTertiary,
-                    maxLines = 2,
+                    fontWeight = if (isRunning && hasThoughts && charCount == 0) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isRunning && hasThoughts && charCount == 0) palette.textSecondary else palette.textTertiary,
+                    maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
-            // Hint
+            // Hint arrow
             if (isCompleted && canvasId != null && charCount == 0) {
                 Text(
                     text = "›",
@@ -1017,7 +1032,7 @@ private fun CanvasStreamCard(
                     fontWeight = FontWeight.Bold,
                     color = palette.accent
                 )
-            } else if (charCount > 0) {
+            } else if (isRunning || charCount > 0) {
                 Text(
                     text = if (expanded) "▾" else "▸",
                     fontSize = 12.sp,
@@ -1026,9 +1041,9 @@ private fun CanvasStreamCard(
             }
         }
 
-        // Expandable code view (only during streaming, no preview)
+        // ── Expandable section: thoughts and/or code ──
         AnimatedVisibility(
-            visible = expanded && charCount > 0,
+            visible = expanded,
             enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
             exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
         ) {
@@ -1038,27 +1053,80 @@ private fun CanvasStreamCard(
                     .padding(top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val scrollState = rememberScrollState()
-                LaunchedEffect(charCount) {
-                    scrollState.animateScrollTo(scrollState.maxValue)
+                // Show thought summaries if available
+                if (hasThoughts) {
+                    val thoughtScrollState = rememberScrollState()
+                    LaunchedEffect(thoughts.size, thoughts.lastOrNull()?.body?.length) {
+                        thoughtScrollState.animateScrollTo(thoughtScrollState.maxValue)
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .verticalScroll(thoughtScrollState)
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        thoughts.forEach { entry ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(2.dp)
+                                        .heightIn(min = 16.dp)
+                                        .background(palette.accent.copy(alpha = 0.5f))
+                                )
+                                Column(modifier = Modifier.padding(start = 8.dp)) {
+                                    if (entry.title.isNotBlank()) {
+                                        Text(
+                                            text = entry.title,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = palette.textPrimary,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                    if (entry.body.isNotBlank()) {
+                                        Text(
+                                            text = entry.body.trim(),
+                                            fontSize = 10.sp,
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                            color = palette.textTertiary,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 300.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(palette.surface)
-                        .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                        .verticalScroll(scrollState)
-                        .padding(10.dp)
-                ) {
-                    Text(
-                        text = htmlContent,
-                        fontSize = 10.sp,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        color = palette.textPrimary.copy(alpha = 0.85f),
-                        lineHeight = 15.sp
-                    )
+
+                // Show code view if streaming / completed with code
+                if (charCount > 0) {
+                    val codeScrollState = rememberScrollState()
+                    LaunchedEffect(charCount) {
+                        codeScrollState.animateScrollTo(codeScrollState.maxValue)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 300.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.surface)
+                            .border(0.5.dp, palette.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .verticalScroll(codeScrollState)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = htmlContent,
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = palette.textPrimary.copy(alpha = 0.85f),
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }

@@ -843,7 +843,7 @@ private fun CanvasDetailViewer(
     var detail by remember { mutableStateOf<CanvasAppDetail?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Versions, 3=Log, 4=Config, 5=Info
+    var selectedTab by remember { mutableStateOf(0) } // 0=Code, 1=Prompt, 2=Versions, 3=Log, 4=Info
     // null = current version, otherwise the version number from versions list
     var selectedVersion by remember { mutableStateOf(initialVersion) }
 
@@ -943,7 +943,7 @@ private fun CanvasDetailViewer(
         isLoading = false
     }
 
-    val tabTitles = listOf("Code", "Prompt", "Versions", "Log", "Config", "Info")
+    val tabTitles = listOf("Code", "Prompt", "Versions", "Log", "Info")
 
     Scaffold(
         containerColor = palette.surface,
@@ -1125,8 +1125,7 @@ private fun CanvasDetailViewer(
                             if (ver != null) selectedTab = 0
                         }
                         3 -> LogTabContent(detail!!, palette)
-                        4 -> ConfigTabContent(detail!!, palette)
-                        5 -> InfoTabContent(detail!!, palette)
+                        4 -> InfoTabContent(detail!!, palette)
                     }
                 }
             }
@@ -1316,6 +1315,84 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                     lineHeight = 22.sp,
                     modifier = Modifier.padding(16.dp)
                 )
+            }
+
+            // ── Collapsible config section ──
+            if (!detail.configUsed.isNullOrEmpty()) {
+                val configLabels = mapOf(
+                    "model" to "Model",
+                    "max_output_tokens" to "Max Output Tokens",
+                    "thinking_level" to "Thinking Level",
+                    "thinking_summaries" to "Thinking Summaries",
+                    "temperature" to "Temperature"
+                )
+                var configExpanded by remember { mutableStateOf(false) }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    color = palette.surfaceContainer,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { configExpanded = !configExpanded }
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = palette.textTertiary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Generation Config",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = palette.textTertiary
+                                )
+                            }
+                            Icon(
+                                if (configExpanded) Icons.Outlined.ExpandLess
+                                else Icons.Outlined.ExpandMore,
+                                contentDescription = if (configExpanded) "Collapse" else "Expand",
+                                tint = palette.textTertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        AnimatedVisibility(
+                            visible = configExpanded,
+                            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(top = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                detail.configUsed!!.forEach { (key, value) ->
+                                    val label = configLabels[key] ?: key.replaceFirstChar { it.uppercase() }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(label, fontSize = 11.sp, color = palette.textTertiary)
+                                        Text(
+                                            value,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = palette.accent
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Edit history — each edit as a clean numbered card

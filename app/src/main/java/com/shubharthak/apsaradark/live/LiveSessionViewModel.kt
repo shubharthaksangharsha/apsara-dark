@@ -58,7 +58,17 @@ data class EmbeddedToolCall(
     val codeImages: List<CodeImageInfo> = emptyList(),
     // Canvas-specific: streaming HTML and final render URL
     val canvasId: String? = null,
-    val canvasRenderUrl: String? = null
+    val canvasRenderUrl: String? = null,
+    // Canvas thought summaries: list of titled entries streamed during generation
+    val canvasThoughts: List<CanvasThoughtEntry> = emptyList()
+)
+
+/**
+ * A single thought summary block. Title is derived from the first line of text.
+ */
+data class CanvasThoughtEntry(
+    val title: String = "",
+    val body: String = ""
 )
 
 /**
@@ -692,6 +702,48 @@ class LiveSessionViewModel(
                 pendingToolCalls[pendingIdx] = pendingToolCalls[pendingIdx].copy(
                     codeOutput = (pendingToolCalls[pendingIdx].codeOutput ?: "") + event.delta
                 )
+            }
+        }.launchIn(viewModelScope)
+
+        // Canvas thought — build list of thought summary entries with title/body
+        wsClient.canvasThought.onEach { event ->
+            Log.d(TAG, "Canvas thought: action=${event.action}, text=${event.text.take(60)}")
+            val canvasTools = setOf("apsara_canvas", "edit_canvas")
+
+            fun updateThoughts(tc: EmbeddedToolCall): EmbeddedToolCall {
+                if (tc.id != event.toolCallId || tc.name !in canvasTools) return tc
+                val thoughts = tc.canvasThoughts.toMutableList()
+                when (event.action) {
+                    "start" -> {
+                        thoughts.add(CanvasThoughtEntry())
+                    }
+                    "delta" -> {
+                        if (thoughts.isEmpty()) thoughts.add(CanvasThoughtEntry())
+                        val last = thoughts.last()
+                        val fullText = (if (last.title.isNotEmpty()) last.title + "\n" + last.body else last.body) + event.text
+                        val lines = fullText.trimStart().split("\n", limit = 2)
+                        val newTitle = lines.firstOrNull()?.trim() ?: ""
+                        val newBody = if (lines.size > 1) lines[1] else ""
+                        thoughts[thoughts.lastIndex] = last.copy(title = newTitle, body = newBody)
+                    }
+                }
+                return tc.copy(canvasThoughts = thoughts)
+            }
+
+            // Update messages
+            val idx = messages.indexOfLast {
+                it.role == LiveMessage.Role.APSARA &&
+                it.toolCalls.any { tc -> tc.id == event.toolCallId && tc.name in canvasTools }
+            }
+            if (idx >= 0) {
+                messages[idx] = messages[idx].copy(
+                    toolCalls = messages[idx].toolCalls.map { updateThoughts(it) }
+                )
+            }
+            // Update pending buffer
+            val pendingIdx = pendingToolCalls.indexOfFirst { it.id == event.toolCallId && it.name in canvasTools }
+            if (pendingIdx >= 0) {
+                pendingToolCalls[pendingIdx] = updateThoughts(pendingToolCalls[pendingIdx])
             }
         }.launchIn(viewModelScope)
 
