@@ -442,11 +442,11 @@ export class CanvasService {
         } else if (chunk.delta?.type === 'thought_summary' && chunk.delta.content?.text) {
           onThought?.(chunk.delta.content.text);
         } else {
-          console.log(`[Canvas][Stream] Unhandled content.delta type: ${chunk.delta?.type}`, JSON.stringify(chunk.delta).substring(0, 200));
+          console.log(`[Canvas][Stream] Unhandled content.delta type: ${chunk.delta?.type}`, (JSON.stringify(chunk.delta) || '').substring(0, 200));
         }
       } else if (chunk.event_type === 'content.start') {
         const cType = chunk.content?.type;
-        console.log(`[Canvas][Stream] content.start: type=${cType}`, JSON.stringify(chunk.content).substring(0, 300));
+        console.log(`[Canvas][Stream] content.start: type=${cType}`, (JSON.stringify(chunk.content) || '').substring(0, 300));
         if (cType === 'thought_summary') {
           // New thought summary block — notify start
           onThoughtStart?.();
@@ -456,7 +456,7 @@ export class CanvasService {
         }
       } else if (chunk.event_type === 'content.stop') {
         const cType = chunk.content?.type;
-        console.log(`[Canvas][Stream] content.stop: type=${cType}`, JSON.stringify(chunk.content).substring(0, 200));
+        console.log(`[Canvas][Stream] content.stop: type=${cType}`, (JSON.stringify(chunk.content) || '').substring(0, 200));
         if (cType && cType !== 'text' && cType !== 'thought' && cType !== 'thought_summary') {
           console.log(`[Canvas][Stream] Built-in tool STOP: ${cType}`);
         }
