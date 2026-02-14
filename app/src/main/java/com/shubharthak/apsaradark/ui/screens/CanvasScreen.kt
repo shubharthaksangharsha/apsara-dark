@@ -1307,35 +1307,27 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Prompt content in a styled card
+            // Prompt content + config in a single styled card
             Surface(
                 color = palette.surfaceContainer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = originalPrompt,
-                    fontSize = 14.sp,
-                    color = palette.textPrimary,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-
-            // ── Collapsible config section — inline under prompt card ──
-            if (!detail.configUsed.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    color = palette.surfaceContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        var configExpanded by remember { mutableStateOf(false) }
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = originalPrompt,
+                        fontSize = 14.sp,
+                        color = palette.textPrimary,
+                        lineHeight = 22.sp
+                    )
+                    // ── Collapsible config — inline inside the prompt card ──
+                    if (!detail.configUsed.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(
                             color = palette.textTertiary.copy(alpha = 0.1f),
                             thickness = 0.5.dp
                         )
+                        var configExpanded by remember { mutableStateOf(false) }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
