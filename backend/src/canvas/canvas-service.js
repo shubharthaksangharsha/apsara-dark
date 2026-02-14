@@ -671,38 +671,35 @@ Fix ALL the issues and output the COMPLETE corrected HTML file. Remember: output
   }
 
   /**
-   * Generate a new title after editing a canvas app.
-   * Uses the edit instructions to create a title that reflects the updated app.
-   * Falls back to instruction-based title if instructions describe a clear rename.
-   */
+ * Generate a new title after editing a canvas app.
+ * STRICT BEHAVIOR:
+ * 1. Preserves the existing title by default.
+ * 2. ONLY updates if the user explicitly asks to "rename" or "call it" something else.
+ * 3. Does NOT auto-generate titles based on content changes (stops "new app" feeling).
+ */
   _generateEditTitle(existingTitle, instructions) {
     if (!instructions) return existingTitle;
 
-    // Check if instructions explicitly mention making it into something new
-    // e.g., "make it a reminder app", "convert to a calculator", "change to a todo list"
-    const transformPatterns = [
-      /(?:make|turn|convert|change|transform)\s+(?:it|this)\s+(?:into|to|into a|to a)\s+(?:a\s+)?(.+?)(?:\s+app)?$/i,
-      /(?:make|create|build)\s+(?:it|this)\s+a\s+(.+?)(?:\s+app)?$/i,
-      /(?:rename|retitle)\s+(?:it|this)?\s*(?:to|as)\s+["']?(.+?)["']?$/i,
+    // Explicit rename patterns
+    const renamePatterns = [
+      /(?:rename|retitle)\s+(?:it|this|the app)?\s*(?:to|as)\s+["']?(.+?)["']?$/i, // "rename to X"
+      /(?:call|name)\s+(?:it|this|the app)\s+["']?(.+?)["']?$/i,                  // "call it X"
+      /change\s+(?:the\s+)?title\s+to\s+["']?(.+?)["']?$/i,                        // "change title to X"
     ];
 
-    for (const pattern of transformPatterns) {
+    for (const pattern of renamePatterns) {
       const match = instructions.match(pattern);
       if (match && match[1]) {
         const newName = match[1].trim();
         // Capitalize first letter of each word
         const titled = newName.replace(/\b\w/g, c => c.toUpperCase());
-        return titled.endsWith('App') ? titled : `${titled} App`;
+        // Don't auto-append "App" anymore — respect the user's explicit name
+        return titled;
       }
     }
 
-    // Otherwise, generate title from the instructions
-    const title = this._generateTitle(instructions);
-    // If the generated title is too similar to instructions being just a verb phrase,
-    // prepend the context from the existing title
-    if (title.length < 15 && existingTitle) {
-      return `${existingTitle} (edited)`;
-    }
-    return title;
+    // Default: Keep the original title!
+    // This creates the feeling of "v2 of the same app" rather than a new generation.
+    return existingTitle;
   }
 }
