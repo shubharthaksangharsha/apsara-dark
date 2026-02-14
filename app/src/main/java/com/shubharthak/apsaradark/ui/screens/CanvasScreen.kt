@@ -1484,34 +1484,67 @@ private fun PromptTabContent(detail: CanvasAppDetail, palette: ApsaraColorPalett
                                         color = palette.textPrimary,
                                         lineHeight = 22.sp
                                     )
-                                    // Per-edit config
+                                    // Per-edit config — collapsible
                                     if (!edit.configUsed.isNullOrEmpty()) {
                                         Spacer(modifier = Modifier.height(8.dp))
-                                        val editConfigLabels = mapOf(
-                                            "model" to "Model",
-                                            "max_output_tokens" to "Max Tokens",
-                                            "thinking_level" to "Thinking",
-                                            "temperature" to "Temperature",
-                                            "thinking_summaries" to "Summaries"
-                                        )
                                         HorizontalDivider(
                                             color = palette.textTertiary.copy(alpha = 0.1f),
                                             thickness = 0.5.dp
                                         )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        edit.configUsed!!.forEach { (key, value) ->
-                                            val label = editConfigLabels[key] ?: key.replaceFirstChar { it.uppercase() }
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
+                                        var editConfigExpanded by remember { mutableStateOf(false) }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { editConfigExpanded = !editConfigExpanded }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.Info,
+                                                contentDescription = "Config",
+                                                tint = palette.textTertiary,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(
+                                                text = if (editConfigExpanded) "▾ Generation Config" else "▸ Generation Config",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = palette.textTertiary
+                                            )
+                                        }
+                                        AnimatedVisibility(
+                                            visible = editConfigExpanded,
+                                            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                                            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
+                                        ) {
+                                            val editConfigLabels = mapOf(
+                                                "model" to "Model",
+                                                "max_output_tokens" to "Max Tokens",
+                                                "thinking_level" to "Thinking",
+                                                "temperature" to "Temperature",
+                                                "thinking_summaries" to "Summaries"
+                                            )
+                                            Column(
+                                                modifier = Modifier.padding(top = 4.dp),
+                                                verticalArrangement = Arrangement.spacedBy(3.dp)
                                             ) {
-                                                Text(label, fontSize = 10.sp, color = palette.textTertiary)
-                                                Text(
-                                                    value,
-                                                    fontSize = 10.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = palette.accent
-                                                )
+                                                edit.configUsed!!.forEach { (key, value) ->
+                                                    val label = editConfigLabels[key] ?: key.replaceFirstChar { it.uppercase() }
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text(label, fontSize = 10.sp, color = palette.textTertiary)
+                                                        Text(
+                                                            value,
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            color = palette.accent
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }

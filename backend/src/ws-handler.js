@@ -201,10 +201,7 @@ export function handleWebSocket(ws, apiKey) {
                   const thoughtCb = (thought) => {
                     send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                   };
-                  const toolStatusCb = (status, toolType) => {
-                    send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
-                  };
-                  result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
+                  result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, null);
                 } else {
                   const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                   const chunkCb = (delta) => {
@@ -216,10 +213,7 @@ export function handleWebSocket(ws, apiKey) {
                   const thoughtCb = (thought) => {
                     send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                   };
-                  const toolStatusCb = (status, toolType) => {
-                    send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
-                  };
-                  result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
+                  result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, null);
                 }
                 console.log(`[WS] [SYNC-LONG] Tool result (${fc.name}):`, JSON.stringify(result));
                 const response = { id: fc.id, name: fc.name, response: result };
@@ -277,10 +271,7 @@ export function handleWebSocket(ws, apiKey) {
                     const thoughtCb = (thought) => {
                       send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                     };
-                    const toolStatusCb = (status, toolType) => {
-                      send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
-                    };
-                    result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
+                    result = await executeCanvasEditTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, null);
                   } else {
                     const iConfig = geminiSession?.config?.interactionConfig?.canvas || {};
                     const chunkCb = (delta) => {
@@ -292,10 +283,7 @@ export function handleWebSocket(ws, apiKey) {
                     const thoughtCb = (thought) => {
                       send({ type: 'canvas_thought', tool_call_id: fc.id, action: 'delta', text: thought });
                     };
-                    const toolStatusCb = (status, toolType) => {
-                      send({ type: 'canvas_tool_call', tool_call_id: fc.id, action: status === 'executing' ? 'start' : 'stop', tool_type: toolType });
-                    };
-                    result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, toolStatusCb);
+                    result = await executeCanvasTool(fc.args || {}, progressCb, iConfig, chunkCb, thoughtStartCb, thoughtCb, null);
                   }
                 } else {
                   result = executeTool(fc.name, fc.args || {});
